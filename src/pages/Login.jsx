@@ -103,7 +103,7 @@ const Login = () => {
           break;
       default:
           setLoginError(
-            err.code || 'Error al iniciar sesión. Revisa tus credenciales.'
+            errorCOde || 'Error al iniciar sesión. Revisa tus credenciales.'
           );
     }
   }

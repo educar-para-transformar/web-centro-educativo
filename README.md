@@ -17,6 +17,10 @@ Para mantener la estabilidad del proyecto y asegurar que las entregas sean consi
 * **Propósito:** Es nuestra rama de trabajo diario. Aquí es donde integramos las nuevas funcionalidades y correcciones de errores.
 * **Despliegue:** Vercel generará automáticamente una **Preview URL** cada vez que subamos cambios aquí para que podamos testearlos en vivo.
 
+### 3. Rama `mejora-buenas-practicas` (Rama de Trabajo y Avances)
+* **Propósito:** Es nuestra rama de mejoras en clase y tareas. Corregimos errores, mejoramos el código.
+* **Despliegue:** Sin despliegue.
+
 ---
 
 ## 🔄 Comandos Rápidos para el Equipo
@@ -49,7 +53,5 @@ Cuando la rama `develop` sea estable y esté lista para la entrega oficial:
 * Calidad de Código: Husky + Prettier + ESLint
 
 ### 👥 Integrantes del Equipo
-* Erick Vicentin (Responsable de Entorno y GitHub)
-* Damian Ramirez
 * Lautaro Höfer
-* Fabricio Alegre
+* Pablo Ramírez
