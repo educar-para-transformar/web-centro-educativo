@@ -90,19 +90,23 @@ const Login = () => {
     try {
       await login(identifier, password, selectedRole);
     } catch (err) {
-      switch (err.code) {
-        case 'auth/invalid-credential':
-          setLoginError('Credenciales inválidas. Verifica tu ID o correo.');
-          break;
-        default:
-          setLoginError(
-            err.code || 'Error al iniciar sesión. Revisa tus credenciales.'
-          );
-      }
+      handleErrors(err.code)
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const handleErrors = (errorCOde) => {
+    switch (errorCOde) {
+      case 'auth/invalid-credential':
+          setLoginError('Credenciales inválidas. Verifica tu ID o correo.');
+          break;
+      default:
+          setLoginError(
+            err.code || 'Error al iniciar sesión. Revisa tus credenciales.'
+          );
+    }
+  }
 
   const handleLogout = () => {
     logout();
@@ -114,14 +118,21 @@ const Login = () => {
   if (isLoggedIn && user) {
     // Determine the role for the logged-in user (mapping claims to ROLES_INFO)
     let activeRoleKey = 'Estudiante';
-    if (user.role === 'user_admin') {
-      activeRoleKey = 'Administrador';
-    } else if (user.role === 'Staff' || user.role === 'Administrativo') {
-      activeRoleKey = 'Staff';
-    } else if (user.role === 'Padre' || user.role === 'Padre/Tutor') {
-      activeRoleKey = 'Padre/Tutor';
-    } else if (user.role === 'Estudiante') {
-      activeRoleKey = 'Estudiante';
+    switch (user.role) {
+      case 'user_admin':
+        activeRoleKey = 'Administrador';
+        break;
+      case user.role === 'Administrativo':
+      case user.role === 'Staff':
+        activeRoleKey = 'Staff';
+        break;
+      case user.role === 'Padre':
+      case user.role === 'Padre/Tutor':
+        activeRoleKey = 'Padre/Tutor';
+        break;
+      default:
+        activeRoleKey = 'Estudiante';
+        break;
     }
     const currentRole = ROLES_INFO[activeRoleKey];
 

@@ -11,13 +11,10 @@ const AdminPanel = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Tab State
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' or 'create'
 
-  // Creation Type State ('parent_student' or 'administrative')
   const [creationType, setCreationType] = useState('parent_student');
 
-  // Form State for creating Parent & Students
   const [parentName, setParentName] = useState('');
   const [parentEmail, setParentEmail] = useState('');
   const [parentDni, setParentDni] = useState('');
@@ -34,10 +31,8 @@ const AdminPanel = () => {
   // Dashboard Sub-Tab ('students' or 'staff')
   const [dashboardSubTab, setDashboardSubTab] = useState('students');
 
-  // Profile Editor Modal State
   const [editingUser, setEditingUser] = useState(null); // { id, type, fields: { nombre, email, dni, ... } }
 
-  // Loading, Errors, and Modal States
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [successModalData, setSuccessModalData] = useState({ title: '', message: '' });
