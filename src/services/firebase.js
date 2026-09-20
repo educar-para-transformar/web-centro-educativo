@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { initializeFirestore } from 'firebase/firestore';
+import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { initializeFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'dummy-api-key',
@@ -23,9 +23,10 @@ export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 });
 
-// COMENTADO PARA CONECTAR A LA NUBE REAL:
-// if (import.meta.env.DEV || window.location.hostname === 'localhost') {
-//   console.log("Conectando a Emuladores locales de Firebase (Auth port 9099, Firestore port 8080)...");
-//   connectAuthEmulator(auth, 'http://127.0.0.1:9099');
-//   connectFirestoreEmulator(db, '127.0.0.1', 8080);
-// }
+// Conectar a los Emuladores locales de Firebase si VITE_USE_EMULATORS=true.
+// No toca ningún proyecto real: Auth (9099), Firestore (8080).
+if (import.meta.env.VITE_USE_EMULATORS === 'true') {
+  console.log('Conectando a Emuladores locales de Firebase (Auth 9099 / Firestore 8080)...');
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099');
+  connectFirestoreEmulator(db, '127.0.0.1', 8080);
+}

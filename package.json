@@ -8,6 +8,9 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "emulators": "npm --prefix functions run build && npx --yes firebase-tools@13 emulators:start",
+    "seed:emulators": "node scripts/seed-emulators.mjs",
+    "app:local": "vite --host 0.0.0.0",
     "prepare": "husky",
     "doctor": "npx react-doctor@latest"
   },
