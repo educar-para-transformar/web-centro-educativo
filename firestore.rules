@@ -33,6 +33,29 @@ service cloud.firestore {
       );
     }
 
+    // Colección materias (Materias curriculares)
+    match /materias/{materiaId} {
+      // Las escrituras se realizan solo a través de las Cloud Functions.
+      allow write: if false;
+
+      // Lectura pública de catálogo de materias para usuarios autenticados.
+      allow read: if request.auth != null;
+    }
+
+    // Colección calificaciones (Notas del alumno por materia y trimestre)
+    match /calificaciones/{calificacionId} {
+      // Las escrituras se realizan solo a través de las Cloud Functions.
+      allow write: if false;
+
+      // Lectura:
+      // 1. El propio alumno puede leer sus calificaciones.
+      // 2. El user_admin puede leer todas.
+      allow read: if request.auth != null && (
+        resource.data.studentId == request.auth.uid ||
+        request.auth.token.role == 'user_admin'
+      );
+    }
+
     // Colección news (Noticias del portal)
     match /news/{newsId} {
       // Las noticias son públicas para que cualquier visitante del sitio pueda leerlas

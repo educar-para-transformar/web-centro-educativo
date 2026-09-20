@@ -740,3 +740,220 @@ export const cf_completePasswordChange = onRequest({ cors: true, invoker: 'publi
     res.status(500).send({ error: error.message || 'Error interno.' });
   }
 });
+
+/**
+ * 12. cf_getStudentGrades
+ * Endpoint GET. Devuelve las calificaciones del alumno autenticado para su boletín.
+ * El alumno solo puede consultar SUS PROPIAS calificaciones (RF HU4).
+ * Un user_admin puede consultar las notas de cualquier alumno pasando ?studentId=.
+ */
+export const cf_getStudentGrades = onRequest({ cors: true, invoker: 'public' }, async (req, res) => {
+  try {
+    const callerClaims = await verifyAuth(req);
+    const role = callerClaims.role;
+
+    if (role !== 'Estudiante' && role !== 'user_admin') {
+      res.status(403).send({ error: 'Permisos insuficientes: Solo el alumno o un administrador puede consultar notas.' });
+      return;
+    }
+
+    // El alumno solo accede a su propio legajo; el admin puede indicar otro estudiante
+    let studentUid = callerClaims.uid;
+    if (role === 'user_admin' && req.query.studentId) {
+      studentUid = String(req.query.studentId);
+    }
+
+    const studentRef = db.collection('students').doc(studentUid);
+    const studentDoc = await studentRef.get();
+    if (!studentDoc.exists) {
+      res.status(404).send({ error: 'Estudiante no encontrado.' });
+      return;
+    }
+    const studentData = studentDoc.data() || {};
+
+    const anio = Number(req.query.anio) || new Date().getFullYear();
+
+    const califSnap = await db.collection('calificaciones')
+      .where('studentId', '==', studentUid)
+      .where('anio', '==', anio)
+      .get();
+
+    // Agrupar notas por materia y trimestre
+    const porMateria = new Map<string, { materia: string; trimestres: Record<number, number[]> }>();
+    for (const doc of califSnap.docs) {
+      const data = doc.data();
+      const materiaId = data.materiaId;
+      if (!porMateria.has(materiaId)) {
+        porMateria.set(materiaId, { materia: data.materia || materiaId, trimestres: { 1: [], 2: [], 3: [] } });
+      }
+      const entry = porMateria.get(materiaId)!;
+      const trim = Number(data.trimestre);
+      if ((data.notas && Array.isArray(data.notas))) {
+        entry.trimestres[trim] = entry.trimestres[trim] || [];
+        entry.trimestres[trim].push(...data.notas.map((n: any) => Number(n)).filter((n: number) => !isNaN(n)));
+      }
+    }
+
+    const calcularPromedio = (notas: number[]) =>
+      notas.length > 0 ? Math.round((notas.reduce((a, b) => a + b, 0) / notas.length) * 100) / 100 : 0;
+
+    const CANT_TRIMESTRES = 3;
+    const materias = Array.from(porMateria.entries()).map(([materiaId, entry]) => {
+      const trimestres = [];
+      const promediosTrimestrales = [];
+      for (let t = 1; t <= CANT_TRIMESTRES; t++) {
+        const notas = entry.trimestres[t] || [];
+        const promedio = calcularPromedio(notas);
+        trimestres.push({ trimestre: t, notas, promedio });
+        if (notas.length > 0) promediosTrimestrales.push(promedio);
+      }
+      const promedioAnual = promediosTrimestrales.length > 0
+        ? Math.round((promediosTrimestrales.reduce((a, b) => a + b, 0) / promediosTrimestrales.length) * 100) / 100
+        : 0;
+      return { materiaId, materia: entry.materia, trimestres, promedioAnual };
+    });
+
+    const promediosGenerales = materias.filter(m => m.promedioAnual > 0).map(m => m.promedioAnual);
+    const promedioGeneral = promediosGenerales.length > 0
+      ? Math.round((promediosGenerales.reduce((a, b) => a + b, 0) / promediosGenerales.length) * 100) / 100
+      : 0;
+
+    res.status(200).send({
+      alumno: {
+        uid: studentUid,
+        nombre: studentData.nombre || '',
+        studentID_login: studentData.studentID_login || '',
+        dni: studentData.dni || '',
+        nivel: studentData.nivel || ''
+      },
+      anio,
+      materias,
+      promedioGeneral
+    });
+  } catch (error: any) {
+    console.error('Error en cf_getStudentGrades:', error);
+    res.status(500).send({ error: error.message || 'Error interno.' });
+  }
+});
+
+/**
+ * 13. cf_seedMateriasYCalificaciones
+ * Invocada por un user_admin para registrar materias curriculares y generar
+ * calificaciones de ejemplo para los alumnos de un nivel (o de un alumno puntual).
+ * Permite poblar el boletín del alumno mientras el módulo docente está en desarrollo.
+ */
+const MATERIAS_POR_NIVEL: Record<string, string[]> = {
+  inicial: ['Juegos y Expresión', 'Lengua Inicial', 'Matemática Inicial', 'Mundo Natural y Social', 'Música', 'Educación Física'],
+  primaria: ['Matemática', 'Lengua y Literatura', 'Ciencias Naturales', 'Ciencias Sociales', 'Inglés', 'Educación Física'],
+  secundaria: ['Matemática', 'Lengua y Literatura', 'Historia', 'Geografía', 'Física', 'Química', 'Biología', 'Inglés', 'Educación Física']
+};
+
+export const cf_seedMateriasYCalificaciones = onRequest({ cors: true, invoker: 'public' }, async (req, res) => {
+  try {
+    const callerClaims = await verifyAuth(req);
+    if (callerClaims.role !== 'user_admin') {
+      res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+      return;
+    }
+
+    const { nivel, studentId, anio } = req.body || {};
+    const materiasNivel = MATERIAS_POR_NIVEL[nivel];
+    if (!materiasNivel) {
+      res.status(400).send({ error: 'Nivel inválido. Debe ser inicial, primaria o secundaria.' });
+      return;
+    }
+
+    const anioLectivo = Number(anio) || new Date().getFullYear();
+
+    // 1) Registrar materias curriculares del nivel si aún no existen
+    const materiasIds: string[] = [];
+    const materiasPorId: Record<string, string> = {};
+    for (const nombre of materiasNivel) {
+      const existing = await db.collection('materias')
+        .where('nivel', '==', nivel)
+        .where('nombre', '==', nombre)
+        .limit(1)
+        .get();
+
+      let materiaRef;
+      if (existing.empty) {
+        const docRef = await db.collection('materias').add({
+          nombre,
+          nivel,
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        materiaRef = docRef;
+      } else {
+        materiaRef = existing.docs[0].ref;
+      }
+      materiasIds.push(materiaRef.id);
+      materiasPorId[materiaRef.id] = nombre;
+    }
+
+    // 2) Determinar los alumnos objetivo (uno puntual o todos los del nivel)
+    let alumnosSnap;
+    if (studentId) {
+      const doc = await db.collection('students').doc(studentId).get();
+      if (!doc.exists) {
+        res.status(404).send({ error: 'Estudiante no encontrado.' });
+        return;
+      }
+      alumnosSnap = { docs: [doc] };
+    } else {
+      alumnosSnap = await db.collection('students').where('nivel', '==', nivel).get();
+    }
+
+    const alumnos = alumnosSnap.docs;
+    if (alumnos.length === 0) {
+      res.status(200).send({ message: 'Materias registradas. No hay alumnos en el nivel para cargar calificaciones.', materiasRegistradas: materiasIds.length, calificacionesCargadas: 0 });
+      return;
+    }
+
+    // 3) Generar calificaciones de ejemplo (3 trimestres, notas 1-10)
+    const CANT_TRIMESTRES = 3;
+    const CANT_NOTAS_POR_TRIMESTRE = 2;
+    let calificacionesCargadas = 0;
+
+    const generaNota = () => Math.floor(Math.random() * 10) + 1;
+
+    // Limpiar calificaciones previas del año para evitar duplicados
+    for (const alumnoDoc of alumnos) {
+      const prev = await db.collection('calificaciones')
+        .where('studentId', '==', alumnoDoc.id)
+        .where('anio', '==', anioLectivo)
+        .get();
+      if (!prev.empty) {
+        const batch = db.batch();
+        prev.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
+    }
+
+    for (const alumnoDoc of alumnos) {
+      for (const materiaId of materiasIds) {
+        for (let trimestre = 1; trimestre <= CANT_TRIMESTRES; trimestre++) {
+          const notas = Array.from({ length: CANT_NOTAS_POR_TRIMESTRE }, generaNota);
+          await db.collection('calificaciones').add({
+            studentId: alumnoDoc.id,
+            materiaId,
+            materia: materiasPorId[materiaId] || materiaId,
+            anio: anioLectivo,
+            trimestre,
+            notas,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          calificacionesCargadas++;
+        }
+      }
+    }
+
+    res.status(201).send({
+      message: 'Materias y calificaciones de ejemplo generadas con éxito.',
+      materiasRegistradas: materiasIds.length,
+      calificacionesCargadas
+    });
+  } catch (error: any) {
+    console.error('Error en cf_seedMateriasYCalificaciones:', error);
+    res.status(500).send({ error: error.message || 'Error interno.' });
+  }
+});

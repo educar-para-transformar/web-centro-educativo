@@ -6,19 +6,27 @@ import ValueCard from '../components/molecules/ValueCard';
 import SuccessModal from '../components/molecules/SuccessModal';
 import LevelsHero from '../components/organisms/LevelsHero';
 import LevelsCTA from '../components/organisms/LevelsCTA';
+import useFormState from '../hooks/useFormState';
 
 const Levels = () => {
   // Modal states for visit scheduling
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({
+  const {
+    formData,
+    setFormData,
+    errors,
+    setErrors,
+    isSubmitting,
+    setIsSubmitting,
+    submitSuccess,
+    setSubmitSuccess,
+    handleInputChange,
+  } = useFormState({
     name: '',
     email: '',
     date: '',
     level: '',
   });
-  const [errors, setErrors] = useState({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitSuccess, setSubmitSuccess] = useState(false);
 
   // PEI Download Toast simulation state
   const [showDownloadToast, setShowDownloadToast] = useState(false);
@@ -123,19 +131,6 @@ const Levels = () => {
       shadowClass: 'ambient-shadow-tertiary'
     }
   ];
-
-  // Input changes
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    if (errors[name]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[name];
-        return newErrors;
-      });
-    }
-  };
 
   // Submit visit booking
   const handleBookingSubmit = (e) => {
