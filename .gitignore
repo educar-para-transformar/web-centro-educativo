@@ -26,3 +26,6 @@ dist-ssr
 .env
 serviceAccountKey.json
 /scratch
+
+# Firebase compiled functions
+functions/lib/
