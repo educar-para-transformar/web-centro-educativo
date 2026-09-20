@@ -20,6 +20,7 @@ const Navbar = ({ noButtons = false }) => {
     user?.email?.split('@')[0] ||
     'Usuario';
   const isAdmin = isLoggedIn && user?.role === 'user_admin';
+  const isStudent = isLoggedIn && user?.role === 'Estudiante';
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Disable body scroll when mobile menu is open
@@ -58,6 +59,7 @@ const Navbar = ({ noButtons = false }) => {
               displayName={displayName}
               navigate={navigate}
               isAdmin={isAdmin}
+              isStudent={isStudent}
             />
           ) : (
             <Button variant="primary" onClick={() => navigate('/login')}>
@@ -101,6 +103,7 @@ const Navbar = ({ noButtons = false }) => {
             logout={logout}
             navigate={navigate}
             isAdmin={isAdmin}
+            isStudent={isStudent}
           />
         )}
       </div>
@@ -177,7 +180,7 @@ const DesktopLinks = () => {
 /**
  * Subcomponent to render the user profile navigation dropdown menu on desktop.
  */
-const UserMenu = ({ logout, displayName, navigate, isAdmin }) => {
+const UserMenu = ({ logout, displayName, navigate, isAdmin, isStudent }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
 
@@ -249,6 +252,21 @@ const UserMenu = ({ logout, displayName, navigate, isAdmin }) => {
               Panel de usuarios
             </button>
           )}
+          {isStudent && (
+            <button
+              type="button"
+              onClick={() => {
+                navigate('/panel-alumno');
+                setIsUserMenuOpen(false);
+              }}
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors text-sm font-semibold cursor-pointer text-left focus:outline-none"
+            >
+              <span className="material-symbols-outlined text-slate-400 text-lg">
+                school
+              </span>
+              Mi boletín
+            </button>
+          )}
           <div className="border-t border-slate-100 my-1"></div>
           <button
             type="button"
@@ -281,7 +299,8 @@ const MobileDrawer = ({
   displayName,
   logout,
   navigate,
-  isAdmin
+  isAdmin,
+  isStudent
 }) => {
   return (
     <div className={`navbar-mobile-drawer ${isOpen ? 'open' : ''}`}>
@@ -418,6 +437,19 @@ const MobileDrawer = ({
                 >
                   <span className="material-symbols-outlined text-lg">admin_panel_settings</span>
                   Panel de usuarios
+                </button>
+              )}
+              {isStudent && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate('/panel-alumno');
+                    onClose();
+                  }}
+                  className="mobile-action-btn profile-btn"
+                >
+                  <span className="material-symbols-outlined text-lg">school</span>
+                  Mi boletín
                 </button>
               )}
               <button

@@ -61,11 +61,13 @@ const Login = () => {
 
   const dropdownRef = useRef(null);
 
-  // Redirigir únicamente a los administradores de usuarios automáticamente
+  // Redirigir según el rol del usuario autenticado
   useEffect(() => {
     if (isLoggedIn && user) {
       if (user.role === 'user_admin') {
         navigate('/admin');
+      } else if (user.role === 'Estudiante') {
+        navigate('/panel-alumno');
       }
     }
   }, [isLoggedIn, user, navigate]);
