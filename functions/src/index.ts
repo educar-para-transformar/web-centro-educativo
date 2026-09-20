@@ -1,5 +1,6 @@
 import { onRequest } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { sendEmail } from './email';
@@ -105,7 +106,7 @@ export const cf_createParentAndStudents = onRequest({ cors: true, invoker: 'publ
         genero: student.genero || '',
         fechaNacimiento: student.fechaNacimiento || '',
         nivel: student.nivel || 'inicial',
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
+        createdAt: FieldValue.serverTimestamp()
       });
 
       studentDocIds.push(studentRef.id);
@@ -125,7 +126,7 @@ export const cf_createParentAndStudents = onRequest({ cors: true, invoker: 'publ
       mustChangePassword: true,
       emailInvalid: false,
       studentIds: studentDocIds,
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: FieldValue.serverTimestamp()
     });
 
     res.status(201).send({
@@ -213,7 +214,7 @@ export const cf_resendActivationLink = onRequest({ cors: true, invoker: 'public'
       }
 
       const activationToken = crypto.randomBytes(32).toString('hex');
-      const activationTokenExpires = admin.firestore.Timestamp.fromDate(
+      const activationTokenExpires = Timestamp.fromDate(
         new Date(Date.now() + 48 * 60 * 60 * 1000)
       );
 
@@ -456,7 +457,7 @@ export const cf_resetStudentPassword = onRequest({ cors: true, invoker: 'public'
 
     // Generar token temporal
     const activationToken = crypto.randomBytes(32).toString('hex');
-    const activationTokenExpires = admin.firestore.Timestamp.fromDate(
+    const activationTokenExpires = Timestamp.fromDate(
       new Date(Date.now() + 48 * 60 * 60 * 1000)
     );
 
@@ -533,7 +534,7 @@ export const cf_createAdministrativeUser = onRequest({ cors: true, invoker: 'pub
       dni: dni.trim(),
       mustChangePassword: true,
       emailInvalid: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: FieldValue.serverTimestamp()
     });
 
     res.status(201).send({
@@ -880,7 +881,7 @@ export const cf_seedMateriasYCalificaciones = onRequest({ cors: true, invoker: '
         const docRef = await db.collection('materias').add({
           nombre,
           nivel,
-          createdAt: admin.firestore.FieldValue.serverTimestamp()
+          createdAt: FieldValue.serverTimestamp()
         });
         materiaRef = docRef;
       } else {
@@ -940,7 +941,7 @@ export const cf_seedMateriasYCalificaciones = onRequest({ cors: true, invoker: '
             anio: anioLectivo,
             trimestre,
             notas,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
+            createdAt: FieldValue.serverTimestamp()
           });
           calificacionesCargadas++;
         }

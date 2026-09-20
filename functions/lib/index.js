@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.cf_seedMateriasYCalificaciones = exports.cf_getStudentGrades = exports.cf_completePasswordChange = exports.cf_updateUserProfile = exports.cf_changeStudentPassword = exports.cf_resetUserPasswordToDni = exports.cf_createAdministrativeUser = exports.cf_resetStudentPassword = exports.cf_loginStudent = exports.cf_activateStudentAccount = exports.cf_updateParentEmailAndResend = exports.cf_resendActivationLink = exports.cf_createParentAndStudents = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
+const firestore_1 = require("firebase-admin/firestore");
 const crypto = __importStar(require("crypto"));
 const bcrypt = __importStar(require("bcryptjs"));
 const email_1 = require("./email");
@@ -127,7 +128,7 @@ exports.cf_createParentAndStudents = (0, https_1.onRequest)({ cors: true, invoke
                 genero: student.genero || '',
                 fechaNacimiento: student.fechaNacimiento || '',
                 nivel: student.nivel || 'inicial',
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
+                createdAt: firestore_1.FieldValue.serverTimestamp()
             });
             studentDocIds.push(studentRef.id);
             createdStudentsInfo.push({
@@ -145,7 +146,7 @@ exports.cf_createParentAndStudents = (0, https_1.onRequest)({ cors: true, invoke
             mustChangePassword: true,
             emailInvalid: false,
             studentIds: studentDocIds,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
+            createdAt: firestore_1.FieldValue.serverTimestamp()
         });
         res.status(201).send({
             parentUid: parentUser.uid,
@@ -218,7 +219,7 @@ exports.cf_resendActivationLink = (0, https_1.onRequest)({ cors: true, invoker: 
                 return;
             }
             const activationToken = crypto.randomBytes(32).toString('hex');
-            const activationTokenExpires = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 48 * 60 * 60 * 1000));
+            const activationTokenExpires = firestore_1.Timestamp.fromDate(new Date(Date.now() + 48 * 60 * 60 * 1000));
             await db.collection('students').doc(targetId).update({
                 activationToken,
                 activationTokenExpires
@@ -426,7 +427,7 @@ exports.cf_resetStudentPassword = (0, https_1.onRequest)({ cors: true, invoker: 
         }
         // Generar token temporal
         const activationToken = crypto.randomBytes(32).toString('hex');
-        const activationTokenExpires = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 48 * 60 * 60 * 1000));
+        const activationTokenExpires = firestore_1.Timestamp.fromDate(new Date(Date.now() + 48 * 60 * 60 * 1000));
         await studentRef.update({
             activationToken,
             activationTokenExpires
@@ -491,7 +492,7 @@ exports.cf_createAdministrativeUser = (0, https_1.onRequest)({ cors: true, invok
             dni: dni.trim(),
             mustChangePassword: true,
             emailInvalid: false,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
+            createdAt: firestore_1.FieldValue.serverTimestamp()
         });
         res.status(201).send({
             uid: userRecord.uid
@@ -805,7 +806,7 @@ exports.cf_seedMateriasYCalificaciones = (0, https_1.onRequest)({ cors: true, in
                 const docRef = await db.collection('materias').add({
                     nombre,
                     nivel,
-                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                    createdAt: firestore_1.FieldValue.serverTimestamp()
                 });
                 materiaRef = docRef;
             }
@@ -861,7 +862,7 @@ exports.cf_seedMateriasYCalificaciones = (0, https_1.onRequest)({ cors: true, in
                         anio: anioLectivo,
                         trimestre,
                         notas,
-                        createdAt: admin.firestore.FieldValue.serverTimestamp()
+                        createdAt: firestore_1.FieldValue.serverTimestamp()
                     });
                     calificacionesCargadas++;
                 }
