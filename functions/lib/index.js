@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.cf_seedMateriasYCalificaciones = exports.cf_getStudentGrades = exports.cf_completePasswordChange = exports.cf_updateUserProfile = exports.cf_changeStudentPassword = exports.cf_resetUserPasswordToDni = exports.cf_createAdministrativeUser = exports.cf_resetStudentPassword = exports.cf_loginStudent = exports.cf_activateStudentAccount = exports.cf_updateParentEmailAndResend = exports.cf_resendActivationLink = exports.cf_createParentAndStudents = void 0;
+exports.cf_setMateriaStudents = exports.cf_updateMateria = exports.cf_createMateria = exports.cf_seedMateriasYCalificaciones = exports.cf_getStudentGrades = exports.cf_completePasswordChange = exports.cf_updateUserProfile = exports.cf_changeStudentPassword = exports.cf_resetUserPasswordToDni = exports.cf_createAdministrativeUser = exports.cf_resetStudentPassword = exports.cf_loginStudent = exports.cf_activateStudentAccount = exports.cf_updateParentEmailAndResend = exports.cf_resendActivationLink = exports.cf_createParentAndStudents = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("firebase-admin/firestore");
@@ -57,6 +57,7 @@ async function verifyAuth(req) {
         return decodedToken;
     }
     catch (err) {
+        console.error('[verifyAuth] Error verificando token:', err?.code || err?.errorInfo?.code || err?.message || err);
         throw new Error('No autorizado: Token de ID inválido.');
     }
 }
@@ -663,12 +664,24 @@ exports.cf_updateUserProfile = (0, https_1.onRequest)({ cors: true, invoker: 'pu
 });
 /**
  * 11. cf_completePasswordChange
- * Invocada por cualquier usuario autenticado tras cambiar su contraseña para marcar mustChangePassword como false.
+ * Invocada por cualquier usuario autenticado tras configurar su nueva contraseña
+ * para actualizar el password en Auth (si se envía `newPassword`) y marcar
+ * mustChangePassword como false.
  */
 exports.cf_completePasswordChange = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
     try {
         const callerClaims = await verifyAuth(req);
         const role = callerClaims.role;
+        const { newPassword } = req.body;
+        // Cambiar la contraseña del lado del servidor para evitar usar un ID token
+        // emitido después de un updatePassword del cliente (que Firebase invalida).
+        if (newPassword) {
+            if (typeof newPassword !== 'string' || newPassword.length < 6) {
+                res.status(400).send({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
+                return;
+            }
+            await admin.auth().updateUser(callerClaims.uid, { password: newPassword });
+        }
         if (role === 'Estudiante') {
             await db.collection('students').doc(callerClaims.uid).update({ mustChangePassword: false });
         }
@@ -876,6 +889,180 @@ exports.cf_seedMateriasYCalificaciones = (0, https_1.onRequest)({ cors: true, in
     }
     catch (error) {
         console.error('Error en cf_seedMateriasYCalificaciones:', error);
+        res.status(500).send({ error: error.message || 'Error interno.' });
+    }
+});
+/**
+ * 14. cf_createMateria
+ * Invocada por un user_admin para registrar una materia curricular.
+ * El nombre debe ser único en toda la colección.
+ */
+exports.cf_createMateria = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'user_admin') {
+            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            return;
+        }
+        const { nombre, nivel, profesorUid } = req.body;
+        if (!nombre || !String(nombre).trim()) {
+            res.status(400).send({ error: 'El nombre de la materia es obligatorio.' });
+            return;
+        }
+        if (!['inicial', 'primaria', 'secundaria'].includes(nivel)) {
+            res.status(400).send({ error: 'Nivel inválido. Debe ser inicial, primaria o secundaria.' });
+            return;
+        }
+        const nombreLimpio = String(nombre).trim();
+        // Verificar unicidad del nombre en toda la colección
+        const duplicado = await db.collection('materias')
+            .where('nombre', '==', nombreLimpio)
+            .limit(1)
+            .get();
+        if (!duplicado.empty) {
+            res.status(409).send({ error: `Ya existe una materia llamada "${nombreLimpio}". El nombre debe ser único.` });
+            return;
+        }
+        // Resolver datos del profesor a cargo (si se asigna uno)
+        let profesorNombre = null;
+        let profesorDni = null;
+        if (profesorUid) {
+            const userDoc = await db.collection('users').doc(profesorUid).get();
+            if (userDoc.exists) {
+                const userData = userDoc.data();
+                profesorNombre = userData?.nombre || null;
+                profesorDni = userData?.dni || null;
+            }
+        }
+        const docRef = await db.collection('materias').add({
+            nombre: nombreLimpio,
+            nivel,
+            profesorUid: profesorUid || null,
+            profesorNombre,
+            profesorDni,
+            createdAt: firestore_1.FieldValue.serverTimestamp()
+        });
+        res.status(201).send({ id: docRef.id, nombre: nombreLimpio });
+    }
+    catch (error) {
+        console.error('Error en cf_createMateria:', error);
+        res.status(500).send({ error: error.message || 'Error interno.' });
+    }
+});
+/**
+ * 15. cf_updateMateria
+ * Invocada por un user_admin para modificar los datos de una materia
+ * (nombre, nivel y profesor a cargo).
+ */
+exports.cf_updateMateria = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'user_admin') {
+            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            return;
+        }
+        const { materiaId, nombre, nivel, profesorUid } = req.body;
+        if (!materiaId || typeof materiaId !== 'string') {
+            res.status(400).send({ error: 'El ID de la materia es obligatorio.' });
+            return;
+        }
+        if (!nombre || !String(nombre).trim()) {
+            res.status(400).send({ error: 'El nombre de la materia es obligatorio.' });
+            return;
+        }
+        if (!['inicial', 'primaria', 'secundaria'].includes(nivel)) {
+            res.status(400).send({ error: 'Nivel inválido. Debe ser inicial, primaria o secundaria.' });
+            return;
+        }
+        const materiaRef = db.collection('materias').doc(materiaId);
+        const materiaDoc = await materiaRef.get();
+        if (!materiaDoc.exists) {
+            res.status(404).send({ error: 'La materia no existe.' });
+            return;
+        }
+        const nombreLimpio = String(nombre).trim();
+        // Verificar unicidad del nombre excluyendo la propia materia
+        const duplicados = await db.collection('materias')
+            .where('nombre', '==', nombreLimpio)
+            .get();
+        const conflicto = duplicados.docs.find((doc) => doc.id !== materiaId);
+        if (conflicto) {
+            res.status(409).send({ error: `Ya existe otra materia llamada "${nombreLimpio}". El nombre debe ser único.` });
+            return;
+        }
+        // Resolver datos del profesor a cargo (si se asigna uno)
+        let profesorNombre = null;
+        let profesorDni = null;
+        if (profesorUid) {
+            const userDoc = await db.collection('users').doc(profesorUid).get();
+            if (userDoc.exists) {
+                const userData = userDoc.data();
+                profesorNombre = userData?.nombre || null;
+                profesorDni = userData?.dni || null;
+            }
+        }
+        await materiaRef.update({
+            nombre: nombreLimpio,
+            nivel,
+            profesorUid: profesorUid || null,
+            profesorNombre,
+            profesorDni,
+            updatedAt: firestore_1.FieldValue.serverTimestamp()
+        });
+        res.status(200).send({ id: materiaId, nombre: nombreLimpio });
+    }
+    catch (error) {
+        console.error('Error en cf_updateMateria:', error);
+        res.status(500).send({ error: error.message || 'Error interno.' });
+    }
+});
+/**
+ * 16. cf_setMateriaStudents
+ * Invocada por un user_admin para asignar/desasignar alumnos a una materia.
+ * Solo se admiten alumnos del mismo nivel educativo que la materia.
+ */
+exports.cf_setMateriaStudents = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'user_admin') {
+            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            return;
+        }
+        const { materiaId, studentIds } = req.body;
+        if (!materiaId || typeof materiaId !== 'string') {
+            res.status(400).send({ error: 'El ID de la materia es obligatorio.' });
+            return;
+        }
+        if (!Array.isArray(studentIds) || studentIds.some((id) => typeof id !== 'string')) {
+            res.status(400).send({ error: 'studentIds debe ser un arreglo de IDs de alumnos.' });
+            return;
+        }
+        const materiaRef = db.collection('materias').doc(materiaId);
+        const materiaDoc = await materiaRef.get();
+        if (!materiaDoc.exists) {
+            res.status(404).send({ error: 'La materia no existe.' });
+            return;
+        }
+        const materiaNivel = materiaDoc.data()?.nivel;
+        // Validar que cada alumno exista y pertenezca al mismo nivel educativo que la materia
+        const idsUnicos = [...new Set(studentIds)];
+        for (const studentId of idsUnicos) {
+            const studentDoc = await db.collection('students').doc(studentId).get();
+            if (!studentDoc.exists) {
+                res.status(400).send({ error: `El alumno ${studentId} no existe.` });
+                return;
+            }
+            const studentData = studentDoc.data();
+            if (studentData?.nivel !== materiaNivel) {
+                res.status(400).send({ error: `El alumno ${studentData?.nombre || studentId} no pertenece al nivel ${materiaNivel}.` });
+                return;
+            }
+        }
+        await materiaRef.update({ studentIds: idsUnicos });
+        res.status(200).send({ id: materiaId, inscriptos: idsUnicos.length });
+    }
+    catch (error) {
+        console.error('Error en cf_setMateriaStudents:', error);
         res.status(500).send({ error: error.message || 'Error interno.' });
     }
 });

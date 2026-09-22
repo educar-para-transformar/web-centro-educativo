@@ -51,6 +51,26 @@ const AdminPanel = () => {
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [dataError, setDataError] = useState('');
 
+  // Materias State
+  const [materiasList, setMateriasList] = useState([]);
+  const [cupoPorMateria, setCupoPorMateria] = useState({});
+  const [materiaNombre, setMateriaNombre] = useState('');
+  const [materiaNivel, setMateriaNivel] = useState('inicial');
+  const [materiaProfesorUid, setMateriaProfesorUid] = useState('');
+  const [isCreatingMateria, setIsCreatingMateria] = useState(false);
+  const [materiaFormError, setMateriaFormError] = useState('');
+  const [showCreateMateriaForm, setShowCreateMateriaForm] = useState(false);
+
+  // Edición de materia y gestión de alumnos inscriptos
+  const [editingMateria, setEditingMateria] = useState(null);
+  const [materiaEditForm, setMateriaEditForm] = useState({ nombre: '', nivel: 'inicial', profesorUid: '' });
+  const [isEditingMateria, setIsEditingMateria] = useState(false);
+  const [materiaEditError, setMateriaEditError] = useState('');
+  const [managingMateriaStudents, setManagingMateriaStudents] = useState(null);
+  const [materiaStudentsSelected, setMateriaStudentsSelected] = useState([]);
+  const [isSavingMateriaStudents, setIsSavingMateriaStudents] = useState(false);
+  const [materiaStudentsError, setMateriaStudentsError] = useState('');
+
   // Filters State
   const [searchFilter, setSearchFilter] = useState('');
   const [levelFilter, setLevelFilter] = useState('todos');
@@ -91,12 +111,22 @@ const AdminPanel = () => {
       // In v2 / emulator, or real environment
       const parentsSnap = await getDocs(collection(db, 'users'));
       const studentsSnap = await getDocs(collection(db, 'students'));
+      const materiasSnap = await getDocs(collection(db, 'materias'));
 
       const parents = parentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const students = studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const materias = materiasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      // Cupo de inscriptos: alumnos asignados (studentIds) en cada materia
+      const cupoCount = {};
+      materias.forEach(materia => {
+        cupoCount[materia.id] = Array.isArray(materia.studentIds) ? materia.studentIds.length : 0;
+      });
 
       setParentsList(parents);
       setStudentsList(students);
+      setMateriasList(materias);
+      setCupoPorMateria(cupoCount);
     } catch (err) {
       console.error("Error cargando datos de Firestore:", err);
       setDataError("No se pudieron cargar datos reales de Firestore. Mostrando datos simulados.");
@@ -111,6 +141,14 @@ const AdminPanel = () => {
         { id: 'student-2', studentID_login: 'EST-2026-90412', parentId: 'parent-1', emailPadre: 'eduardo@ejemplo.com', nombre: 'Mateo Gómez', dni: '45123987', nivel: 'primaria', status: 'pendingParentActivation' },
         { id: 'student-3', studentID_login: 'EST-2026-10492', parentId: 'parent-2', emailPadre: 'maria.invalid@gmail.com', nombre: 'Sofía Rodríguez', dni: '42987123', nivel: 'secundaria', status: 'pendingParentActivation' }
       ]);
+      setMateriasList([
+        { id: 'sec-matematica', nombre: 'Matemática', nivel: 'secundaria', profesorNombre: 'Prof. Analía Torres', profesorDni: '40123456', studentIds: ['student-3'] },
+        { id: 'sec-lengua', nombre: 'Lengua y Literatura', nivel: 'secundaria', profesorNombre: 'Prof. Analía Torres', profesorDni: '40123456', studentIds: ['student-3'] },
+        { id: 'sec-historia', nombre: 'Historia', nivel: 'secundaria', profesorNombre: null, profesorDni: null, studentIds: [] },
+        { id: 'pri-matematica', nombre: 'Matemática', nivel: 'primaria', profesorNombre: null, profesorDni: null, studentIds: ['student-2'] },
+        { id: 'ini-juegos', nombre: 'Juegos y Expresión', nivel: 'inicial', profesorNombre: null, profesorDni: null, studentIds: [] },
+      ]);
+      setCupoPorMateria({ 'sec-matematica': 1, 'sec-lengua': 1, 'sec-historia': 0, 'pri-matematica': 1, 'ini-juegos': 0 });
     } finally {
       setIsLoadingData(false);
     }
@@ -246,6 +284,196 @@ const AdminPanel = () => {
       setFormError(`Fallo al registrar: ${err.message || 'Error de conexión.'}`);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Crear materia desde el panel
+  const handleCreateMateriaSubmit = async (e) => {
+    e.preventDefault();
+    setMateriaFormError('');
+
+    if (!materiaNombre.trim()) {
+      setMateriaFormError('El nombre de la materia es obligatorio.');
+      return;
+    }
+
+    setIsCreatingMateria(true);
+    try {
+      const FUNCTIONS_BASE_URL = import.meta.env.VITE_FUNCTIONS_BASE_URL || (import.meta.env.DEV ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1' : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
+
+      let token = 'mock-admin-token';
+      if (auth.currentUser) {
+        token = await auth.currentUser.getIdToken();
+      }
+
+      const response = await fetch(`${FUNCTIONS_BASE_URL}/cf_createMateria`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          nombre: materiaNombre.trim(),
+          nivel: materiaNivel,
+          profesorUid: materiaProfesorUid || null
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Fallo de API.');
+      }
+
+      setSuccessModalData({
+        title: '¡Materia Creada!',
+        message: `Se registró la materia "${materiaNombre.trim()}".`
+      });
+      setSuccessModalOpen(true);
+
+      setMateriaNombre('');
+      setMateriaNivel('inicial');
+      setMateriaProfesorUid('');
+      setShowCreateMateriaForm(false);
+      fetchDashboardData();
+    } catch (err) {
+      console.error(err);
+      setMateriaFormError(err.message);
+    } finally {
+      setIsCreatingMateria(false);
+    }
+  };
+
+  // ----- EDICIÓN DE MATERIA -----
+  const handleEditMateriaOpen = (materia) => {
+    setMateriaEditForm({
+      nombre: materia.nombre || '',
+      nivel: materia.nivel || 'inicial',
+      profesorUid: materia.profesorUid || ''
+    });
+    setMateriaEditError('');
+    setEditingMateria(materia);
+  };
+
+  const handleEditMateriaFieldChange = (field, value) => {
+    setMateriaEditForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleEditMateriaSubmit = async (e) => {
+    e.preventDefault();
+    if (!editingMateria) return;
+    setMateriaEditError('');
+
+    if (!materiaEditForm.nombre.trim()) {
+      setMateriaEditError('El nombre de la materia es obligatorio.');
+      return;
+    }
+
+    setIsEditingMateria(true);
+    try {
+      const FUNCTIONS_BASE_URL = import.meta.env.VITE_FUNCTIONS_BASE_URL || (import.meta.env.DEV ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1' : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
+
+      let token = 'mock-admin-token';
+      if (auth.currentUser) {
+        token = await auth.currentUser.getIdToken();
+      }
+
+      const response = await fetch(`${FUNCTIONS_BASE_URL}/cf_updateMateria`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          materiaId: editingMateria.id,
+          nombre: materiaEditForm.nombre.trim(),
+          nivel: materiaEditForm.nivel,
+          profesorUid: materiaEditForm.profesorUid || null
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Fallo de API.');
+      }
+
+      setSuccessModalData({
+        title: '¡Materia Actualizada!',
+        message: `Se actualizaron los datos de "${materiaEditForm.nombre.trim()}".`
+      });
+      setSuccessModalOpen(true);
+
+      setEditingMateria(null);
+      setMateriaEditForm({ nombre: '', nivel: 'inicial', profesorUid: '' });
+      fetchDashboardData();
+    } catch (err) {
+      console.error(err);
+      setMateriaEditError(err.message);
+    } finally {
+      setIsEditingMateria(false);
+    }
+  };
+
+  // ----- GESTIÓN DE ALUMNOS DE UNA MATERIA -----
+  const getMateriaLevelStudents = (materia) =>
+    studentsList.filter(s => (s.nivel || 'inicial') === (materia.nivel || 'inicial'));
+
+  const handleManageStudentsOpen = (materia) => {
+    setMateriaStudentsSelected(Array.isArray(materia.studentIds) ? [...materia.studentIds] : []);
+    setMateriaStudentsError('');
+    setManagingMateriaStudents(materia);
+  };
+
+  const toggleMateriaStudent = (studentId) => {
+    setMateriaStudentsSelected(prev =>
+      prev.includes(studentId) ? prev.filter(id => id !== studentId) : [...prev, studentId]
+    );
+  };
+
+  const handleSaveMateriaStudents = async (e) => {
+    e.preventDefault();
+    if (!managingMateriaStudents) return;
+    setMateriaStudentsError('');
+
+    setIsSavingMateriaStudents(true);
+    try {
+      const FUNCTIONS_BASE_URL = import.meta.env.VITE_FUNCTIONS_BASE_URL || (import.meta.env.DEV ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1' : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
+
+      let token = 'mock-admin-token';
+      if (auth.currentUser) {
+        token = await auth.currentUser.getIdToken();
+      }
+
+      const response = await fetch(`${FUNCTIONS_BASE_URL}/cf_setMateriaStudents`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          materiaId: managingMateriaStudents.id,
+          studentIds: materiaStudentsSelected
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Fallo de API.');
+      }
+
+      setSuccessModalData({
+        title: '¡Inscripciones Actualizadas!',
+        message: `Se actualizaron los alumnos de "${managingMateriaStudents.nombre}" (${materiaStudentsSelected.length} inscriptos).`
+      });
+      setSuccessModalOpen(true);
+
+      setManagingMateriaStudents(null);
+      setMateriaStudentsSelected([]);
+      fetchDashboardData();
+    } catch (err) {
+      console.error(err);
+      setMateriaStudentsError(err.message);
+    } finally {
+      setIsSavingMateriaStudents(false);
     }
   };
 
@@ -467,10 +695,10 @@ const AdminPanel = () => {
             )}
 
             {/* Sub-tabs Selector */}
-            <div className="flex bg-slate-200/40 p-1 rounded-xl border border-slate-200/50 max-w-md">
+            <div className="flex bg-slate-200/40 p-1 rounded-xl border border-slate-200/50 w-full lg:w-auto">
               <button
                 onClick={() => setDashboardSubTab('students')}
-                className={`flex-1 py-2 rounded-lg font-label font-bold text-xs transition-all cursor-pointer border-none ${
+                className={`flex-1 lg:flex-none px-3 lg:px-4 py-2 rounded-lg font-label font-bold text-xs transition-all cursor-pointer border-none whitespace-nowrap ${
                   dashboardSubTab === 'students'
                     ? 'bg-orange-500 text-white shadow-sm'
                     : 'text-slate-600 hover:text-slate-900 bg-transparent'
@@ -480,13 +708,23 @@ const AdminPanel = () => {
               </button>
               <button
                 onClick={() => setDashboardSubTab('staff')}
-                className={`flex-1 py-2 rounded-lg font-label font-bold text-xs transition-all cursor-pointer border-none ${
+                className={`flex-1 lg:flex-none px-3 lg:px-4 py-2 rounded-lg font-label font-bold text-xs transition-all cursor-pointer border-none whitespace-nowrap ${
                   dashboardSubTab === 'staff'
                     ? 'bg-orange-500 text-white shadow-sm'
                     : 'text-slate-600 hover:text-slate-900 bg-transparent'
                 }`}
               >
                 Personal Institucional
+              </button>
+              <button
+                onClick={() => setDashboardSubTab('materias')}
+                className={`flex-1 lg:flex-none px-3 lg:px-4 py-2 rounded-lg font-label font-bold text-xs transition-all cursor-pointer border-none whitespace-nowrap ${
+                  dashboardSubTab === 'materias'
+                    ? 'bg-orange-500 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 bg-transparent'
+                }`}
+              >
+                Materias
               </button>
             </div>
 
@@ -498,6 +736,236 @@ const AdminPanel = () => {
                     <div className="animate-spin h-8 w-8 border-4 border-orange-500 border-t-transparent rounded-full mx-auto mb-4"></div>
                     <p className="font-semibold">Cargando base de datos...</p>
                   </div>
+                ) : dashboardSubTab === 'materias' ? (
+                  <>
+
+                    {/* Header + Create Materia */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 border-b border-slate-100">
+                      <div className="text-left">
+                        <h3 className="font-headline text-lg font-bold text-slate-800">Materias Curriculares</h3>
+                        <p className="text-sm text-slate-500 mt-0.5">Registro de materias, docente a cargo y cupo de inscriptos.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowCreateMateriaForm(!showCreateMateriaForm)}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-orange-100 hover:bg-orange-200 text-orange-700 font-bold text-xs transition-all cursor-pointer border-none self-start sm:self-auto"
+                      >
+                        <Icon name={showCreateMateriaForm ? 'close' : 'add'} className="text-sm" />
+                        {showCreateMateriaForm ? 'Cerrar Formulario' : 'Nueva Materia'}
+                      </button>
+                    </div>
+
+                    {/* Create Materia Form */}
+                    {showCreateMateriaForm && (
+                      <form onSubmit={handleCreateMateriaSubmit} className="p-6 border-b border-slate-100 bg-slate-50/50 space-y-4 text-left">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nombre de la Materia</label>
+                            <input
+                              type="text"
+                              placeholder="Ej. Programación Avanzada"
+                              value={materiaNombre}
+                              onChange={(e) => setMateriaNombre(e.target.value)}
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm"
+                              required
+                            />
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nivel Educativo</label>
+                            <select
+                              value={materiaNivel}
+                              onChange={(e) => setMateriaNivel(e.target.value)}
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm appearance-none"
+                            >
+                              <option value="inicial">Nivel Inicial</option>
+                              <option value="primaria">Primaria</option>
+                              <option value="secundaria">Secundaria</option>
+                            </select>
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Profesor a Cargo</label>
+                            <select
+                              value={materiaProfesorUid}
+                              onChange={(e) => setMateriaProfesorUid(e.target.value)}
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm appearance-none"
+                            >
+                              <option value="">Sin asignar</option>
+                              {parentsList
+                                .filter((u) => ['Staff'].includes(u.role))
+                                .map((prof) => (
+                                  <option key={prof.id} value={prof.id}>
+                                    {prof.nombre || prof.email} {prof.dni ? `| DNI ${prof.dni}` : ''}
+                                  </option>
+                                ))}
+                            </select>
+                            {parentsList.filter((u) => ['Staff'].includes(u.role)).length === 0 && (
+                              <p className="text-[11px] text-amber-600 font-semibold">
+                                No hay docentes cargados. Registrá personal para poder asignar profesores.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {materiaFormError && (
+                          <p className="text-xs text-red-500 font-bold bg-red-50 border border-red-100 p-3 rounded-xl">{materiaFormError}</p>
+                        )}
+
+                        <button
+                          type="submit"
+                          disabled={isCreatingMateria}
+                          className="w-full flex justify-center items-center py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold text-sm rounded-full shadow-lg shadow-orange-600/10 transition-all cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed border-none"
+                        >
+                          {isCreatingMateria ? 'Guardando...' : 'Registrar Materia'}
+                        </button>
+                      </form>
+                    )}
+
+                    {materiasList.length === 0 ? (
+                      <div className="p-16 text-center text-slate-500">
+                        <Icon name="menu_book" className="text-5xl text-slate-300 mb-4" />
+                        <p className="font-bold text-lg">No hay materias registradas</p>
+                        <p className="text-sm mt-1">Usá "Nueva Materia" para registrar la primera.</p>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Vista Desktop (Tabla) */}
+                        <div className="hidden md:block">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-400 font-label font-bold text-xs uppercase tracking-wider">
+                                <th className="py-4 px-6">Materia</th>
+                                <th className="py-4 px-6">Nivel Educativo</th>
+                                <th className="py-4 px-6">Profesor a Cargo</th>
+                                <th className="py-4 px-6 text-center">Cupo Inscriptos</th>
+                                <th className="py-4 px-6 text-right">Acciones</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-body text-sm text-slate-700">
+                              {materiasList.map((materia) => (
+                                <tr key={materia.id} className="hover:bg-slate-50/50 transition-colors">
+                                  <td className="py-5 px-6">
+                                    <div className="flex flex-col gap-0.5">
+                                      <span className="font-bold text-slate-800">{materia.nombre}</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-5 px-6">
+                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                      (materia.nivel || 'inicial') === 'inicial' ? 'bg-secondary-container/20 text-secondary' :
+                                      (materia.nivel || 'inicial') === 'primaria' ? 'bg-primary-container/20 text-primary' :
+                                      'bg-tertiary-container/20 text-tertiary-dim'
+                                    }`}>
+                                      {(materia.nivel || 'inicial').toUpperCase()}
+                                    </span>
+                                  </td>
+                                  <td className="py-5 px-6">
+                                    {materia.profesorNombre ? (
+                                      <div className="flex flex-col gap-0.5">
+                                        <span className="font-semibold text-slate-700">{materia.profesorNombre}</span>
+                                        {materia.profesorDni && (
+                                          <span className="text-xs text-slate-400 font-mono">DNI: {materia.profesorDni}</span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+                                        <Icon name="person_off" className="text-xs" />
+                                        Sin asignar
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="py-5 px-6 text-center">
+                                    <span className={`inline-flex items-center justify-center gap-1 min-w-[2.5rem] px-2.5 py-1 rounded-full text-sm font-bold ${
+                                      (cupoPorMateria[materia.id] || 0) > 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-slate-100 text-slate-400 border border-slate-200'
+                                    }`}>
+                                      <Icon name="groups" className="text-sm" />
+                                      {cupoPorMateria[materia.id] || 0}
+                                    </span>
+                                  </td>
+                                  <td className="py-5 px-6 text-right whitespace-nowrap">
+                                    <div className="inline-flex items-center gap-2 justify-end">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleEditMateriaOpen(materia)}
+                                        title="Editar materia"
+                                        className="p-2.5 rounded-full bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-500 transition-all cursor-pointer border-none"
+                                      >
+                                        <Icon name="edit" className="text-base leading-none" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleManageStudentsOpen(materia)}
+                                        title="Gestionar alumnos inscriptos"
+                                        className="p-2.5 rounded-full bg-slate-100 hover:bg-blue-100 hover:text-blue-700 text-slate-500 transition-all cursor-pointer border-none"
+                                      >
+                                        <Icon name="groups" className="text-base leading-none" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Vista Mobile (Tarjetas) */}
+                        <div className="block md:hidden space-y-4 p-4 bg-slate-50/50">
+                          {materiasList.map((materia) => (
+                            <div key={materia.id} className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm space-y-4 text-left">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex flex-col gap-1">
+                                  <span className="font-bold text-base text-slate-800 leading-tight">{materia.nombre}</span>
+                                  <span className={`inline-flex w-max px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                                    (materia.nivel || 'inicial') === 'inicial' ? 'bg-secondary-container/20 text-secondary' :
+                                    (materia.nivel || 'inicial') === 'primaria' ? 'bg-primary-container/20 text-primary' :
+                                    'bg-tertiary-container/20 text-tertiary-dim'
+                                  }`}>
+                                    {(materia.nivel || 'inicial').toUpperCase()}
+                                  </span>
+                                </div>
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                                  (cupoPorMateria[materia.id] || 0) > 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-slate-100 text-slate-400 border border-slate-200'
+                                }`}>
+                                  <Icon name="groups" className="text-sm" />
+                                  {cupoPorMateria[materia.id] || 0}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[9px]">Profesor a Cargo</span>
+                                {materia.profesorNombre ? (
+                                  <div className="flex flex-col">
+                                    <span className="font-bold text-xs text-slate-700">{materia.profesorNombre}</span>
+                                    {materia.profesorDni && (
+                                      <span className="text-xs text-slate-500 font-mono">DNI: {materia.profesorDni}</span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 mt-1">
+                                    <Icon name="person_off" className="text-xs" />
+                                    Sin asignar
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex gap-3 pt-1 border-t border-slate-100">
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditMateriaOpen(materia)}
+                                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-full bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-600 font-bold text-xs transition-all cursor-pointer border-none"
+                                >
+                                  <Icon name="edit" className="text-sm" /> Editar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleManageStudentsOpen(materia)}
+                                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-full bg-slate-100 hover:bg-blue-100 hover:text-blue-700 text-slate-600 font-bold text-xs transition-all cursor-pointer border-none"
+                                >
+                                  <Icon name="groups" className="text-sm" /> Alumnos
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </>
                 ) : (dashboardSubTab === 'students' ? filteredStudents.length === 0 : filteredStaff.length === 0) ? (
                   <div className="p-16 text-center text-slate-500">
                     <Icon name="person_off" className="text-5xl text-slate-300 mb-4" />
@@ -1392,6 +1860,174 @@ const AdminPanel = () => {
                   className="flex-1 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold text-sm rounded-full shadow-lg shadow-orange-600/10 transition-all cursor-pointer border-none"
                 >
                   Guardar Cambios
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Edición de Materia */}
+      {editingMateria && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-lg bg-white rounded-[2rem] border border-slate-200 shadow-2xl p-8 animate-scale-in text-left">
+            <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
+              <h3 className="font-headline text-2xl font-bold text-slate-800 flex items-center gap-2">
+                <Icon name="edit" className="text-orange-500" />
+                <span>Editar Materia</span>
+              </h3>
+              <button
+                onClick={() => setEditingMateria(null)}
+                className="text-slate-400 hover:text-slate-600 transition-colors border-none bg-transparent cursor-pointer"
+              >
+                <Icon name="close" className="text-xl" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditMateriaSubmit} className="space-y-6">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nombre de la Materia</label>
+                <input
+                  type="text"
+                  value={materiaEditForm.nombre || ''}
+                  onChange={(e) => handleEditMateriaFieldChange('nombre', e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm"
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nivel Educativo</label>
+                <select
+                  value={materiaEditForm.nivel || 'inicial'}
+                  onChange={(e) => handleEditMateriaFieldChange('nivel', e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
+                  required
+                >
+                  <option value="inicial">Nivel Inicial</option>
+                  <option value="primaria">Primaria</option>
+                  <option value="secundaria">Secundaria</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Profesor a Cargo</label>
+                <select
+                  value={materiaEditForm.profesorUid || ''}
+                  onChange={(e) => handleEditMateriaFieldChange('profesorUid', e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
+                >
+                  <option value="">Sin asignar</option>
+                  {parentsList
+                    .filter((u) => ['Staff'].includes(u.role))
+                    .map((prof) => (
+                      <option key={prof.id} value={prof.id}>
+                        {prof.nombre || prof.email} {prof.dni ? `| DNI ${prof.dni}` : ''}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {materiaEditError && (
+                <p className="text-xs text-red-500 font-bold bg-red-50 border border-red-100 p-3 rounded-xl">{materiaEditError}</p>
+              )}
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setEditingMateria(null)}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-full transition-all cursor-pointer border-none"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isEditingMateria}
+                  className="flex-1 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold text-sm rounded-full shadow-lg shadow-orange-600/10 transition-all cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed border-none"
+                >
+                  {isEditingMateria ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Gestión de Alumnos de la Materia */}
+      {managingMateriaStudents && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-lg bg-white rounded-[2rem] border border-slate-200 shadow-2xl p-8 animate-scale-in text-left">
+            <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
+              <h3 className="font-headline text-2xl font-bold text-slate-800 flex items-center gap-2">
+                <Icon name="groups" className="text-orange-500" />
+                <span>Alumnos de {managingMateriaStudents.nombre}</span>
+              </h3>
+              <button
+                onClick={() => setManagingMateriaStudents(null)}
+                className="text-slate-400 hover:text-slate-600 transition-colors border-none bg-transparent cursor-pointer"
+              >
+                <Icon name="close" className="text-xl" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveMateriaStudents} className="space-y-6">
+              <div className="flex items-center justify-between text-xs text-slate-500 font-bold">
+                <span className="uppercase tracking-wider">
+                  Nivel: <b className="text-slate-700">{(managingMateriaStudents.nivel || 'inicial').toUpperCase()}</b>
+                </span>
+                <span><b className="text-orange-600">{materiaStudentsSelected.length}</b> seleccionados</span>
+              </div>
+
+              <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                {getMateriaLevelStudents(managingMateriaStudents).length === 0 ? (
+                  <p className="text-sm text-slate-400 bg-slate-50 border border-slate-100 rounded-xl p-4 text-center">
+                    No hay alumnos registrados en el nivel {(managingMateriaStudents.nivel || 'inicial')}.
+                  </p>
+                ) : (
+                  getMateriaLevelStudents(managingMateriaStudents).map(s => (
+                    <label
+                      key={s.id}
+                      className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                        materiaStudentsSelected.includes(s.id)
+                          ? 'border-orange-400 bg-orange-50'
+                          : 'border-slate-100 bg-slate-50 hover:border-slate-200'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={materiaStudentsSelected.includes(s.id)}
+                        onChange={() => toggleMateriaStudent(s.id)}
+                        className="h-4 w-4 accent-orange-500 cursor-pointer"
+                      />
+                      <div className="flex-1 flex flex-col gap-0.5">
+                        <span className="font-semibold text-sm text-slate-700">{s.nombre}</span>
+                        <span className="text-xs text-slate-400 font-mono">
+                          {s.studentID_login || 'Sin ID'} · DNI {s.dni}
+                        </span>
+                      </div>
+                    </label>
+                  ))
+                )}
+              </div>
+
+              {materiaStudentsError && (
+                <p className="text-xs text-red-500 font-bold bg-red-50 border border-red-100 p-3 rounded-xl">{materiaStudentsError}</p>
+              )}
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setManagingMateriaStudents(null)}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-full transition-all cursor-pointer border-none"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingMateriaStudents}
+                  className="flex-1 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold text-sm rounded-full shadow-lg shadow-orange-600/10 transition-all cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed border-none"
+                >
+                  {isSavingMateriaStudents ? 'Guardando...' : 'Guardar Inscripciones'}
                 </button>
               </div>
             </form>

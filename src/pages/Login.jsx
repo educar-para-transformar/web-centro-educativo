@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { images } from '../services/imagesConfig';
 import Navbar from '../components/Navbar';
@@ -50,16 +50,12 @@ const Login = () => {
   const navigate = useNavigate();
   const { user, login, logout, isLoggedIn } = useAuth();
 
-  const [selectedRole, setSelectedRole] = useState('Estudiante');
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const dropdownRef = useRef(null);
 
   // Redirigir según el rol del usuario autenticado
   useEffect(() => {
@@ -72,25 +68,12 @@ const Login = () => {
     }
   }, [isLoggedIn, user, navigate]);
 
-  // Close dropdown on click outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
     setLoginError('');
     try {
-      await login(identifier, password, selectedRole);
+      await login(identifier, password);
     } catch (err) {
       handleErrors(err.code)
     } finally {
@@ -105,7 +88,7 @@ const Login = () => {
           break;
       default:
           setLoginError(
-            errorCOde || 'Error al iniciar sesión. Revisa tus credenciales.'
+            'Error al iniciar sesión. Revisa tus credenciales.'
           );
     }
   }
@@ -285,93 +268,6 @@ const Login = () => {
               </p>
             </div>
 
-            {/* Role Selection Premium Custom Dropdown with Badges */}
-            <div className="mb-8" ref={dropdownRef}>
-              <label className="block font-label text-sm font-medium text-slate-500 mb-3 uppercase tracking-wider">
-                Selecciona tu Rol
-              </label>
-              <div className="relative">
-                {/* Dropdown Trigger Button (Styled as a Badge) */}
-                <button
-                  type="button"
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 text-slate-800 border-2 border-slate-200 rounded-xl hover:bg-slate-100/50 focus:border-orange-500 focus:bg-white focus:outline-none transition-all duration-200 cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className="material-symbols-outlined text-orange-600 bg-orange-100 rounded-lg p-1.5 text-xl flex items-center justify-center"
-                      style={{ fontVariationSettings: "'FILL' 1" }}
-                    >
-                      {ROLES_INFO[selectedRole]?.icon}
-                    </span>
-                    <span className="font-label text-sm font-bold text-slate-700">
-                      {ROLES_INFO[selectedRole]?.label}
-                    </span>
-                  </div>
-                  <span
-                    className="material-symbols-outlined text-slate-400 transition-transform duration-200"
-                    style={{
-                      transform: isDropdownOpen
-                        ? 'rotate(180deg)'
-                        : 'rotate(0deg)',
-                    }}
-                  >
-                    expand_more
-                  </span>
-                </button>
-
-                {/* Dropdown Menu featuring Badge-like Options */}
-                {isDropdownOpen && (
-                  <div className="absolute z-20 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-[0px_10px_25px_rgba(0,0,0,0.08)] p-2 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
-                    {Object.keys(ROLES_INFO).map((roleKey) => {
-                      const role = ROLES_INFO[roleKey];
-                      const isSelected = selectedRole === roleKey;
-                      return (
-                        <button
-                          key={roleKey}
-                          type="button"
-                          onClick={() => {
-                            setSelectedRole(roleKey);
-                            setIsDropdownOpen(false);
-                          }}
-                          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border-2 transition-all duration-150 cursor-pointer text-left ${
-                            isSelected
-                              ? 'border-orange-500 bg-orange-50 text-orange-600 font-bold'
-                              : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-800'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <span
-                              className={`material-symbols-outlined rounded-lg p-1 text-lg flex items-center justify-center transition-colors ${
-                                isSelected
-                                  ? 'text-orange-600 bg-orange-100'
-                                  : 'text-slate-400 bg-slate-100'
-                              }`}
-                              style={{
-                                fontVariationSettings: isSelected
-                                  ? "'FILL' 1"
-                                  : "'FILL' 0",
-                              }}
-                            >
-                              {role.icon}
-                            </span>
-                            <span className="font-label text-sm font-semibold">
-                              {role.label}
-                            </span>
-                          </div>
-                          {isSelected && (
-                            <span className="material-symbols-outlined text-orange-600 text-lg font-bold">
-                              check
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-
             {/* Login Form */}
             <form onSubmit={handleLoginSubmit} className="space-y-6">
               {/* ID / Email Field */}
@@ -392,7 +288,7 @@ const Login = () => {
                     className="w-full pl-12 pr-4 py-3 bg-slate-50 text-slate-800 placeholder-slate-400 border-2 border-slate-200 rounded-xl focus:bg-white focus:border-orange-500 focus:ring-0 transition-colors font-body text-base"
                     id="identifier"
                     name="identifier"
-                    placeholder="ej. 2023-EST-001"
+                    placeholder="ej. EST-2026-88123 o correo@ejemplo.com"
                     type="text"
                     required
                     value={identifier}

@@ -3,8 +3,8 @@
 // ------------------------------------------------------------
 // Carga datos de prueba SOLO en los emuladores locales usando el
 // Admin SDK (solo tiene sentido apuntando a emuladores locales).
-//   Auth      -> 127.0.0.1:9099  (admin, docente, tutor + claims)
-//   Firestore -> 127.0.0.1:8080  (alumnos, materias, calificaciones)
+//   Auth      -> 127.0.0.1:9099  (admin, docente, tutores + claims)
+//   Firestore -> 127.0.0.1:8080  (alumnos, tutores, materias, calificaciones)
 // Requisito: los emuladores deben estar corriendo (`npm run emulators`).
 // Uso:       npm run seed:emulators
 // ============================================================
@@ -76,46 +76,75 @@ async function main() {
 
   // 1) USUARIOS LOCALES (Auth emulator)
   console.log('\n[Auth] Creando usuarios locales...');
-  await upsertUser('admin@centro.local', 'admin1234', 'Director/a', 'user_admin');
+  const adminAuth = await upsertUser('admin@centro.local', 'admin1234', 'Director/a', 'user_admin');
   console.log('  ✓ admin@centro.local (user_admin)');
-  await upsertUser('docente@centro.local', 'docente1234', 'Prof. Analía Torres', 'Staff');
+  const docenteAuth = await upsertUser('docente@centro.local', 'docente1234', 'Prof. Analía Torres', 'Staff');
   console.log('  ✓ docente@centro.local (Staff)');
-  await upsertUser('tutor1@centro.local', 'tutor1234', 'Eduardo Gómez', 'Padre');
-  console.log('  ✓ tutor1@centro.local (Padre)');
+  const administrativoAuth = await upsertUser('admininterno@centro.local', 'admininterno1234', 'Lic. Martín Ruiz', 'Administrativo');
+  console.log('  ✓ admininterno@centro.local (Administrativo)');
+
+  // Un tutor distinto por alumno
+  const tutores = [
+    { email: 'tutor1@centro.local', password: 'tutor1234', nombre: 'Eduardo Gómez', dni: '30123456' },
+    { email: 'tutor2@centro.local', password: 'tutor1234', nombre: 'María Rodríguez', dni: '32123456' },
+    { email: 'tutor3@centro.local', password: 'tutor1234', nombre: 'Carlos Fernández', dni: '34123456' },
+  ];
+
+  for (const tutor of tutores) {
+    tutor.uid = await upsertUser(tutor.email, tutor.password, tutor.nombre, 'Padre');
+    tutor.studentIds = [];
+    console.log(`  ✓ ${tutor.email} (Padre) - ${tutor.nombre}`);
+  }
+
+  // Personal institucional (para asignar profesores a materias)
+  const personalInstitucional = [
+    { uid: adminAuth, email: 'admin@centro.local', nombre: 'Director/a', dni: '20123456', role: 'user_admin' },
+    { uid: docenteAuth, email: 'docente@centro.local', nombre: 'Prof. Analía Torres', dni: '40123456', role: 'Staff' },
+    { uid: administrativoAuth, email: 'admininterno@centro.local', nombre: 'Lic. Martín Ruiz', dni: '38123456', role: 'Administrativo' },
+  ];
 
   // 2) MATERIAS (Firestore emulator)
   console.log('\n[Firestore] Registrando materias curriculares...');
   const materiaIdsPorNivel = {};
+  const docente = { uid: docenteAuth, nombre: 'Prof. Analía Torres', dni: '40123456' };
+  const MATERIAS_CON_PROFESOR = new Set(['sec-matematica', 'sec-lengua', 'pri-matematica', 'pri-lengua', 'ini-juegos', 'ini-lengua']);
   for (const [nivel, materias] of Object.entries(MATERIAS_POR_NIVEL)) {
     materiaIdsPorNivel[nivel] = [];
     for (const materia of materias) {
+      const conProfesor = MATERIAS_CON_PROFESOR.has(materia.id);
       await db.collection('materias').doc(materia.id).set({
         nombre: materia.nombre,
         nivel,
+        profesorUid: conProfesor ? docente.uid : null,
+        profesorNombre: conProfesor ? docente.nombre : null,
+        profesorDni: conProfesor ? docente.dni : null,
+        studentIds: [],
         createdAt: null,
       });
       materiaIdsPorNivel[nivel].push(materia.id);
-      console.log(`  ✓ [${nivel}] ${materia.nombre}`);
+      console.log(`  ✓ [${nivel}] ${materia.nombre}${conProfesor ? ` -> ${docente.nombre}` : ''}`);
     }
   }
 
-  // 3) ALUMNOS + CALIFICACIONES (Firestore emulator)
-  console.log('\n[Firestore] Creando alumnos con calificaciones...');
+  // 3) ALUMNOS + TUTORES + CALIFICACIONES (Firestore emulator)
+  console.log('\n[Firestore] Creando alumnos, tutores y calificaciones...');
   const alumnos = {
-    alumno1: { nombre: 'Lucía Gómez', dni: '48123456', nivel: 'secundaria', genero: 'Femenino', fechaNacimiento: '2010-04-12', idLogin: 'EST-2026-88123' },
-    alumno2: { nombre: 'Mateo Gómez', dni: '45123987', nivel: 'primaria', genero: 'Masculino', fechaNacimiento: '2014-09-30', idLogin: 'EST-2026-90412' },
-    alumno3: { nombre: 'Sofía Rodríguez', dni: '42987123', nivel: 'secundaria', genero: 'Femenino', fechaNacimiento: '2011-01-25', idLogin: 'EST-2026-10492' },
+    alumno1: { nombre: 'Lucía Gómez', dni: '48123456', nivel: 'secundaria', genero: 'Femenino', fechaNacimiento: '2010-04-12', idLogin: 'EST-2026-88123', tutor: 0 },
+    alumno2: { nombre: 'Mateo Gómez', dni: '45123987', nivel: 'primaria', genero: 'Masculino', fechaNacimiento: '2014-09-30', idLogin: 'EST-2026-90412', tutor: 1 },
+    alumno3: { nombre: 'Sofía Rodríguez', dni: '42987123', nivel: 'secundaria', genero: 'Femenino', fechaNacimiento: '2011-01-25', idLogin: 'EST-2026-10492', tutor: 2 },
   };
 
   const anioLectivo = new Date().getFullYear();
   let cantCalificaciones = 0;
+  const alumnosPorNivel = { inicial: [], primaria: [], secundaria: [] };
 
   for (const [docId, base] of Object.entries(alumnos)) {
+    const tutor = tutores[base.tutor];
     const hashedPassword = await bcrypt.hash(base.dni, 10); // clave inicial = DNI
     await db.collection('students').doc(docId).set({
       studentID_login: base.idLogin,
-      parentId: 'tutor1',
-      emailPadre: 'tutor1@centro.local',
+      parentId: tutor.uid,
+      emailPadre: tutor.email,
       hashedPassword,
       status: 'active',
       mustChangePassword: false,
@@ -126,7 +155,9 @@ async function main() {
       nivel: base.nivel,
       createdAt: null,
     });
-    console.log(`  ✓ ${base.nombre} (${base.idLogin})`);
+    tutor.studentIds.push(docId);
+    alumnosPorNivel[base.nivel].push(docId);
+    console.log(`  ✓ ${base.nombre} (${base.idLogin}) -> tutor ${tutor.nombre}`);
 
     const materiaIds = materiaIdsPorNivel[base.nivel];
     for (const materiaId of materiaIds) {
@@ -151,14 +182,56 @@ async function main() {
     }
   }
 
+  // Asignar a cada materia los alumnos de su mismo nivel educativo (inscripción inicial)
+  for (const nivel of Object.keys(MATERIAS_POR_NIVEL)) {
+    for (const materiaId of materiaIdsPorNivel[nivel]) {
+      await db.collection('materias').doc(materiaId).update({ studentIds: alumnosPorNivel[nivel] });
+    }
+    console.log(`  ✓ Materias de ${nivel} -> ${alumnosPorNivel[nivel].length} alumno/s inscriptos`);
+  }
+
+  // Datos extendidos de cada tutor en la colección `users` (para el panel admin)
+  for (const tutor of tutores) {
+    await db.collection('users').doc(tutor.uid).set({
+      role: 'Padre',
+      email: tutor.email,
+      nombre: tutor.nombre,
+      dni: tutor.dni,
+      mustChangePassword: false,
+      emailInvalid: false,
+      studentIds: tutor.studentIds,
+      createdAt: null,
+    });
+    console.log(`  ✓ Tutor Firestore: ${tutor.nombre} (${tutor.email}, ${tutor.studentIds.length} alumno/s)`);
+  }
+
+  // Datos del personal institucional en `users` (para asignar profesores)
+  for (const persona of personalInstitucional) {
+    await db.collection('users').doc(persona.uid).set({
+      role: persona.role,
+      email: persona.email,
+      nombre: persona.nombre,
+      dni: persona.dni,
+      mustChangePassword: false,
+      emailInvalid: false,
+      studentIds: [],
+      createdAt: null,
+    });
+    console.log(`  ✓ Personal Firestore: ${persona.nombre} (${persona.email}, ${persona.role})`);
+  }
+
   console.log('\n✅ Seed completado.');
   console.log('------------------------------------------------------------');
   console.log('Credenciales locales de prueba:');
-  console.log('  Admin  :  admin@centro.local   / admin1234');
-  console.log('  Docente:  docente@centro.local / docente1234');
-  console.log('  Alumno1:  EST-2026-88123       / 48123456');
-  console.log('  Alumno2:  EST-2026-90412       / 45123987');
-  console.log('  Alumno3:  EST-2026-10492       / 42987123');
+  console.log('  Admin  :  admin@centro.local       / admin1234');
+  console.log('  Docente:  docente@centro.local     / docente1234');
+  console.log('  Admin.Int: admininterno@centro.local / admininterno1234');
+  console.log('  Tutor1 :  tutor1@centro.local      / tutor1234  (Eduardo Gómez)');
+  console.log('  Tutor2 :  tutor2@centro.local      / tutor1234  (María Rodríguez)');
+  console.log('  Tutor3 :  tutor3@centro.local      / tutor1234  (Carlos Fernández)');
+  console.log('  Alumno1:  EST-2026-88123           / 48123456   (tutor 1)');
+  console.log('  Alumno2:  EST-2026-90412           / 45123987   (tutor 2)');
+  console.log('  Alumno3:  EST-2026-10492           / 42987123   (tutor 3)');
   console.log(`  Calificaciones cargadas: ${cantCalificaciones}`);
   console.log('------------------------------------------------------------');
 }
