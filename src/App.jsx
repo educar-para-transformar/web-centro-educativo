@@ -15,6 +15,7 @@ import Wellness from './pages/Wellness';
 
 import Privacy from './pages/Privacy';
 import StudentPanel from './pages/StudentPanel';
+import TeacherPanel from './pages/TeacherPanel';
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/admin" element={<AdminPanel />} />
         <Route path="/panel-alumno" element={<StudentPanel />} />
+        <Route path="/panel-docente" element={<TeacherPanel />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

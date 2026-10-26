@@ -7,37 +7,34 @@ import { db, auth } from '../services/firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 
+// Catálogo canónico: debe coincidir con functions/src/index.ts y scripts/seed-emulators.mjs.
 const MATERIAS_POR_NIVEL = {
   inicial: [
-    'Expresión Corporal',
+    'Juegos y Expresión',
+    'Lengua Inicial',
+    'Matemática Inicial',
+    'Mundo Natural y Social',
     'Música',
-    'Plástica',
-    'Educación Física',
-    'Prácticas del Lenguaje'
+    'Educación Física'
   ],
   primaria: [
     'Matemática',
-    'Prácticas del Lenguaje',
-    'Ciencias Sociales',
+    'Lengua y Literatura',
     'Ciencias Naturales',
-    'Educación Física',
-    'Música',
-    'Plástica',
-    'Inglés'
+    'Ciencias Sociales',
+    'Inglés',
+    'Educación Física'
   ],
   secundaria: [
     'Matemática',
-    'Literatura',
+    'Lengua y Literatura',
     'Historia',
     'Geografía',
-    'Biología',
     'Física',
     'Química',
-    'Educación Física',
+    'Biología',
     'Inglés',
-    'Educación Artística',
-    'Programación',
-    'Economía'
+    'Educación Física'
   ]
 };
 
@@ -650,6 +647,14 @@ const AdminPanel = () => {
 
     return matchesSearch && matchesLevel;
   });
+
+  // Preservar nombres existentes que no estén en el catálogo para no bloquear su edición.
+  const opcionesMateriaEdicion = (() => {
+    const opcionesNivel = MATERIAS_POR_NIVEL[materiaEditForm.nivel || 'inicial'] || [];
+    const nombreActual = (materiaEditForm.nombre || '').trim();
+    if (!nombreActual || opcionesNivel.includes(nombreActual)) return opcionesNivel;
+    return [nombreActual, ...opcionesNivel];
+  })();
 
   return (
     <div className="relative min-h-screen bg-slate-50 text-slate-800 font-body">
@@ -1952,7 +1957,7 @@ const AdminPanel = () => {
                   required
                 >
                   <option value="" disabled>Seleccionar materia...</option>
-                  {MATERIAS_POR_NIVEL[materiaEditForm.nivel || 'inicial']?.map((mat) => (
+                  {opcionesMateriaEdicion.map((mat) => (
                     <option key={mat} value={mat}>{mat}</option>
                   ))}
                 </select>
