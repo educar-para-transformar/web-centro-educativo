@@ -7,6 +7,40 @@ import { db, auth } from '../services/firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 
+const MATERIAS_POR_NIVEL = {
+  inicial: [
+    'Expresión Corporal',
+    'Música',
+    'Plástica',
+    'Educación Física',
+    'Prácticas del Lenguaje'
+  ],
+  primaria: [
+    'Matemática',
+    'Prácticas del Lenguaje',
+    'Ciencias Sociales',
+    'Ciencias Naturales',
+    'Educación Física',
+    'Música',
+    'Plástica',
+    'Inglés'
+  ],
+  secundaria: [
+    'Matemática',
+    'Literatura',
+    'Historia',
+    'Geografía',
+    'Biología',
+    'Física',
+    'Química',
+    'Educación Física',
+    'Inglés',
+    'Educación Artística',
+    'Programación',
+    'Economía'
+  ]
+};
+
 const AdminPanel = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -607,6 +641,16 @@ const AdminPanel = () => {
     return matchesSearch;
   });
 
+  const filteredMaterias = materiasList.filter(materia => {
+    const matchesSearch = 
+      (materia.nombre || '').toLowerCase().includes(searchFilter.toLowerCase()) ||
+      (materia.profesorNombre || '').toLowerCase().includes(searchFilter.toLowerCase());
+    
+    const matchesLevel = levelFilter === 'todos' || (materia.nivel || 'inicial') === levelFilter;
+
+    return matchesSearch && matchesLevel;
+  });
+
   return (
     <div className="relative min-h-screen bg-slate-50 text-slate-800 font-body">
       <Navbar noButtons={true} />
@@ -664,26 +708,34 @@ const AdminPanel = () => {
                 </span>
                 <input
                   type="text"
-                  placeholder="Buscar por alumno, email del tutor o ID..."
+                  placeholder={
+                    dashboardSubTab === 'students' 
+                      ? "Buscar por alumno, email del tutor o ID..." 
+                      : dashboardSubTab === 'staff' 
+                        ? "Buscar por docente, email o DNI..." 
+                        : "Buscar materia o docente..."
+                  }
                   value={searchFilter}
                   onChange={(e) => setSearchFilter(e.target.value)}
                   className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:bg-white focus:border-orange-500 focus:outline-none transition-all text-sm"
                 />
               </div>
 
-              <div className="flex items-center gap-3 w-full md:w-auto">
-                <label className="text-sm font-semibold text-slate-500 whitespace-nowrap">Nivel Educativo:</label>
-                <select
-                  value={levelFilter}
-                  onChange={(e) => setLevelFilter(e.target.value)}
-                  className="w-full md:w-48 px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:bg-white focus:border-orange-500 focus:outline-none transition-all text-sm appearance-none"
-                >
-                  <option value="todos">Todos los niveles</option>
-                  <option value="inicial">Nivel Inicial</option>
-                  <option value="primaria">Primaria</option>
-                  <option value="secundaria">Secundaria</option>
-                </select>
-              </div>
+              {dashboardSubTab !== 'staff' && (
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                  <label className="text-sm font-semibold text-slate-500 whitespace-nowrap">Nivel Educativo:</label>
+                  <select
+                    value={levelFilter}
+                    onChange={(e) => setLevelFilter(e.target.value)}
+                    className="w-full md:w-48 px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:bg-white focus:border-orange-500 focus:outline-none transition-all text-sm appearance-none"
+                  >
+                    <option value="todos">Todos los niveles</option>
+                    <option value="inicial">Nivel Inicial</option>
+                    <option value="primaria">Primaria</option>
+                    <option value="secundaria">Secundaria</option>
+                  </select>
+                </div>
+              )}
             </div>
 
             {/* Warn message if Firestore failed and mock data is shown */}
@@ -761,20 +813,26 @@ const AdminPanel = () => {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           <div className="flex flex-col gap-2">
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nombre de la Materia</label>
-                            <input
-                              type="text"
-                              placeholder="Ej. Programación Avanzada"
+                            <select
                               value={materiaNombre}
                               onChange={(e) => setMateriaNombre(e.target.value)}
-                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm"
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm appearance-none"
                               required
-                            />
+                            >
+                              <option value="" disabled>Seleccionar materia...</option>
+                              {MATERIAS_POR_NIVEL[materiaNivel]?.map((mat) => (
+                                <option key={mat} value={mat}>{mat}</option>
+                              ))}
+                            </select>
                           </div>
                           <div className="flex flex-col gap-2">
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nivel Educativo</label>
                             <select
                               value={materiaNivel}
-                              onChange={(e) => setMateriaNivel(e.target.value)}
+                              onChange={(e) => {
+                                setMateriaNivel(e.target.value);
+                                setMateriaNombre('');
+                              }}
                               className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm appearance-none"
                             >
                               <option value="inicial">Nivel Inicial</option>
@@ -820,7 +878,7 @@ const AdminPanel = () => {
                       </form>
                     )}
 
-                    {materiasList.length === 0 ? (
+                    {filteredMaterias.length === 0 ? (
                       <div className="p-16 text-center text-slate-500">
                         <Icon name="menu_book" className="text-5xl text-slate-300 mb-4" />
                         <p className="font-bold text-lg">No hay materias registradas</p>
@@ -841,7 +899,7 @@ const AdminPanel = () => {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 font-body text-sm text-slate-700">
-                              {materiasList.map((materia) => (
+                              {filteredMaterias.map((materia) => (
                                 <tr key={materia.id} className="hover:bg-slate-50/50 transition-colors">
                                   <td className="py-5 px-6">
                                     <div className="flex flex-col gap-0.5">
@@ -908,7 +966,7 @@ const AdminPanel = () => {
 
                         {/* Vista Mobile (Tarjetas) */}
                         <div className="block md:hidden space-y-4 p-4 bg-slate-50/50">
-                          {materiasList.map((materia) => (
+                          {filteredMaterias.map((materia) => (
                             <div key={materia.id} className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm space-y-4 text-left">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex flex-col gap-1">
@@ -1887,20 +1945,27 @@ const AdminPanel = () => {
             <form onSubmit={handleEditMateriaSubmit} className="space-y-6">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nombre de la Materia</label>
-                <input
-                  type="text"
+                <select
                   value={materiaEditForm.nombre || ''}
                   onChange={(e) => handleEditMateriaFieldChange('nombre', e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm"
+                  className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
                   required
-                />
+                >
+                  <option value="" disabled>Seleccionar materia...</option>
+                  {MATERIAS_POR_NIVEL[materiaEditForm.nivel || 'inicial']?.map((mat) => (
+                    <option key={mat} value={mat}>{mat}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nivel Educativo</label>
                 <select
                   value={materiaEditForm.nivel || 'inicial'}
-                  onChange={(e) => handleEditMateriaFieldChange('nivel', e.target.value)}
+                  onChange={(e) => {
+                    handleEditMateriaFieldChange('nivel', e.target.value);
+                    handleEditMateriaFieldChange('nombre', '');
+                  }}
                   className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
                   required
                 >
