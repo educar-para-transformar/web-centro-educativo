@@ -62,6 +62,8 @@ const Login = () => {
     if (isLoggedIn && user) {
       if (user.role === 'user_admin') {
         navigate('/admin');
+      } else if (user.role === 'Staff') {
+        navigate('/panel-docente');
       } else if (user.role === 'Estudiante') {
         navigate('/panel-alumno');
       }
@@ -107,12 +109,12 @@ const Login = () => {
       case 'user_admin':
         activeRoleKey = 'Administrador';
         break;
-      case user.role === 'Administrativo':
-      case user.role === 'Staff':
+      case 'Administrativo':
+      case 'Staff':
         activeRoleKey = 'Staff';
         break;
-      case user.role === 'Padre':
-      case user.role === 'Padre/Tutor':
+      case 'Padre':
+      case 'Padre/Tutor':
         activeRoleKey = 'Padre/Tutor';
         break;
       default:

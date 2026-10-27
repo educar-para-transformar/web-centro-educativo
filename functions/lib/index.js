@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.cf_setMateriaStudents = exports.cf_updateMateria = exports.cf_createMateria = exports.cf_seedMateriasYCalificaciones = exports.cf_getStudentGrades = exports.cf_completePasswordChange = exports.cf_updateUserProfile = exports.cf_changeStudentPassword = exports.cf_resetUserPasswordToDni = exports.cf_createAdministrativeUser = exports.cf_resetStudentPassword = exports.cf_loginStudent = exports.cf_activateStudentAccount = exports.cf_updateParentEmailAndResend = exports.cf_resendActivationLink = exports.cf_createParentAndStudents = void 0;
+exports.cf_saveGrades = exports.cf_getDocentePanel = exports.cf_setMateriaStudents = exports.cf_updateMateria = exports.cf_createMateria = exports.cf_seedMateriasYCalificaciones = exports.cf_getStudentGrades = exports.cf_completePasswordChange = exports.cf_updateUserProfile = exports.cf_changeStudentPassword = exports.cf_resetUserPasswordToDni = exports.cf_createAdministrativeUser = exports.cf_resetStudentPassword = exports.cf_loginStudent = exports.cf_activateStudentAccount = exports.cf_updateParentEmailAndResend = exports.cf_resendActivationLink = exports.cf_createParentAndStudents = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("firebase-admin/firestore");
@@ -786,6 +786,7 @@ exports.cf_getStudentGrades = (0, https_1.onRequest)({ cors: true, invoker: 'pub
  * calificaciones de ejemplo para los alumnos de un nivel (o de un alumno puntual).
  * Permite poblar el boletín del alumno mientras el módulo docente está en desarrollo.
  */
+// Catálogo canónico: debe coincidir con src/pages/AdminPanel.jsx y scripts/seed-emulators.mjs.
 const MATERIAS_POR_NIVEL = {
     inicial: ['Juegos y Expresión', 'Lengua Inicial', 'Matemática Inicial', 'Mundo Natural y Social', 'Música', 'Educación Física'],
     primaria: ['Matemática', 'Lengua y Literatura', 'Ciencias Naturales', 'Ciencias Sociales', 'Inglés', 'Educación Física'],
@@ -895,7 +896,7 @@ exports.cf_seedMateriasYCalificaciones = (0, https_1.onRequest)({ cors: true, in
 /**
  * 14. cf_createMateria
  * Invocada por un user_admin para registrar una materia curricular.
- * El nombre debe ser único en toda la colección.
+ * El nombre debe ser único dentro del nivel educativo.
  */
 exports.cf_createMateria = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
     try {
@@ -914,13 +915,14 @@ exports.cf_createMateria = (0, https_1.onRequest)({ cors: true, invoker: 'public
             return;
         }
         const nombreLimpio = String(nombre).trim();
-        // Verificar unicidad del nombre en toda la colección
+        // Unicidad por nivel: "Matemática" puede existir en primaria y secundaria.
         const duplicado = await db.collection('materias')
+            .where('nivel', '==', nivel)
             .where('nombre', '==', nombreLimpio)
             .limit(1)
             .get();
         if (!duplicado.empty) {
-            res.status(409).send({ error: `Ya existe una materia llamada "${nombreLimpio}". El nombre debe ser único.` });
+            res.status(409).send({ error: `Ya existe una materia llamada "${nombreLimpio}" en el nivel ${nivel}.` });
             return;
         }
         // Resolver datos del profesor a cargo (si se asigna uno)
@@ -981,13 +983,14 @@ exports.cf_updateMateria = (0, https_1.onRequest)({ cors: true, invoker: 'public
             return;
         }
         const nombreLimpio = String(nombre).trim();
-        // Verificar unicidad del nombre excluyendo la propia materia
+        // Verificar unicidad dentro del nivel, excluyendo la propia materia.
         const duplicados = await db.collection('materias')
+            .where('nivel', '==', nivel)
             .where('nombre', '==', nombreLimpio)
             .get();
         const conflicto = duplicados.docs.find((doc) => doc.id !== materiaId);
         if (conflicto) {
-            res.status(409).send({ error: `Ya existe otra materia llamada "${nombreLimpio}". El nombre debe ser único.` });
+            res.status(409).send({ error: `Ya existe otra materia llamada "${nombreLimpio}" en el nivel ${nivel}.` });
             return;
         }
         // Resolver datos del profesor a cargo (si se asigna uno)
@@ -1063,6 +1066,206 @@ exports.cf_setMateriaStudents = (0, https_1.onRequest)({ cors: true, invoker: 'p
     }
     catch (error) {
         console.error('Error en cf_setMateriaStudents:', error);
+        res.status(500).send({ error: error.message || 'Error interno.' });
+    }
+});
+/**
+ * 17. cf_getDocentePanel
+ * Endpoint GET exclusivo para docentes (rol Staff).
+ * Devuelve las materias asignadas, sus alumnos inscriptos y las
+ * calificaciones del año lectivo solicitado.
+ */
+exports.cf_getDocentePanel = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'Staff') {
+            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol Staff.' });
+            return;
+        }
+        const anio = Number(req.query.anio) || new Date().getFullYear();
+        // Perfil del docente y materias a su cargo.
+        const [docenteDoc, materiasSnap] = await Promise.all([
+            db.collection('users').doc(callerClaims.uid).get(),
+            db.collection('materias').where('profesorUid', '==', callerClaims.uid).get()
+        ]);
+        const materias = materiasSnap.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => {
+            const nivelA = String(a.nivel || '');
+            const nivelB = String(b.nivel || '');
+            return nivelA !== nivelB
+                ? nivelA.localeCompare(nivelB)
+                : String(a.nombre || '').localeCompare(String(b.nombre || ''));
+        });
+        // Cargar una sola vez todos los alumnos del docente.
+        const studentIds = [
+            ...new Set(materias.flatMap((materia) => Array.isArray(materia.studentIds) ? materia.studentIds : []))
+        ];
+        const studentDocs = await Promise.all(studentIds.map((studentId) => db.collection('students').doc(studentId).get()));
+        const studentsById = new Map();
+        studentDocs.forEach((doc) => {
+            if (!doc.exists)
+                return;
+            const data = doc.data() || {};
+            studentsById.set(doc.id, {
+                id: doc.id,
+                nombre: data.nombre || '',
+                studentID_login: data.studentID_login || ''
+            });
+        });
+        // Calificaciones del año, consultadas por materia.
+        const calificacionesSnaps = await Promise.all(materias.map((materia) => db.collection('calificaciones')
+            .where('materiaId', '==', materia.id)
+            .where('anio', '==', anio)
+            .get()));
+        const materiasConDatos = materias.map((materia, index) => {
+            const inscritos = Array.isArray(materia.studentIds) ? materia.studentIds : [];
+            const alumnos = inscritos
+                .map((studentId) => studentsById.get(studentId))
+                .filter(Boolean)
+                .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
+            const calificaciones = calificacionesSnaps[index].docs.map((doc) => {
+                const data = doc.data();
+                return {
+                    studentId: data.studentId,
+                    trimestre: Number(data.trimestre),
+                    notas: Array.isArray(data.notas)
+                        ? data.notas.map((nota) => Number(nota))
+                        : []
+                };
+            });
+            return {
+                id: materia.id,
+                nombre: materia.nombre || '',
+                nivel: materia.nivel || '',
+                alumnos,
+                calificaciones
+            };
+        });
+        res.status(200).send({
+            docente: {
+                uid: callerClaims.uid,
+                nombre: docenteDoc.data()?.nombre || '',
+                email: docenteDoc.data()?.email || callerClaims.email || ''
+            },
+            anio,
+            materias: materiasConDatos
+        });
+    }
+    catch (error) {
+        console.error('Error en cf_getDocentePanel:', error);
+        res.status(500).send({ error: error.message || 'Error interno.' });
+    }
+});
+/**
+ * 18. cf_saveGrades
+ * Guarda o actualiza las notas de una materia y trimestre.
+ * Un docente solo puede escribir en las materias que tiene asignadas
+ * y sobre alumnos inscriptos en ellas.
+ */
+exports.cf_saveGrades = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'Staff') {
+            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol Staff.' });
+            return;
+        }
+        const { materiaId, trimestre, anio, grades } = req.body || {};
+        if (!materiaId || typeof materiaId !== 'string' || !Array.isArray(grades)) {
+            res.status(400).send({ error: 'Faltan parámetros requeridos (materiaId, trimestre, grades).' });
+            return;
+        }
+        const trimestreNum = Number(trimestre);
+        if (![1, 2, 3].includes(trimestreNum)) {
+            res.status(400).send({ error: 'El trimestre debe ser 1, 2 o 3.' });
+            return;
+        }
+        const anioLectivo = Number(anio) || new Date().getFullYear();
+        if (!Number.isInteger(anioLectivo) || anioLectivo < 2000 || anioLectivo > 2100) {
+            res.status(400).send({ error: 'El año lectivo es inválido.' });
+            return;
+        }
+        const materiaDoc = await db.collection('materias').doc(materiaId).get();
+        if (!materiaDoc.exists) {
+            res.status(404).send({ error: 'La materia no existe.' });
+            return;
+        }
+        const materiaData = materiaDoc.data() || {};
+        if (materiaData.profesorUid !== callerClaims.uid) {
+            res.status(403).send({ error: 'No tenés permiso para cargar notas en esta materia.' });
+            return;
+        }
+        const inscriptos = new Set(Array.isArray(materiaData.studentIds) ? materiaData.studentIds : []);
+        if (inscriptos.size === 0) {
+            res.status(400).send({ error: 'La materia no tiene alumnos inscriptos.' });
+            return;
+        }
+        // Validar y normalizar cada fila enviada por el docente.
+        const normalizadas = [];
+        const alumnosProcesados = new Set();
+        for (const fila of grades) {
+            const studentId = fila?.studentId;
+            if (!studentId || !inscriptos.has(studentId)) {
+                res.status(400).send({ error: `El alumno ${studentId || 'desconocido'} no está inscripto en esta materia.` });
+                return;
+            }
+            if (alumnosProcesados.has(studentId)) {
+                res.status(400).send({ error: `El alumno ${studentId} está repetido en la carga.` });
+                return;
+            }
+            const notasRaw = Array.isArray(fila?.notas) ? fila.notas : [];
+            if (notasRaw.length > 10) {
+                res.status(400).send({ error: 'Se permiten hasta 10 notas por alumno y trimestre.' });
+                return;
+            }
+            const notas = notasRaw.map((nota) => Number(nota));
+            if (notas.some((nota) => !Number.isFinite(nota) || nota < 1 || nota > 10)) {
+                res.status(400).send({ error: 'Todas las notas deben ser números entre 1 y 10.' });
+                return;
+            }
+            alumnosProcesados.add(studentId);
+            normalizadas.push({ studentId, notas });
+        }
+        // Reutilizar los documentos existentes para no duplicar calificaciones.
+        const existentesSnap = await db.collection('calificaciones')
+            .where('materiaId', '==', materiaId)
+            .where('anio', '==', anioLectivo)
+            .where('trimestre', '==', trimestreNum)
+            .get();
+        const existentesPorAlumno = new Map();
+        existentesSnap.docs.forEach((doc) => {
+            const studentId = doc.data().studentId;
+            if (studentId && !existentesPorAlumno.has(studentId)) {
+                existentesPorAlumno.set(studentId, doc.ref);
+            }
+        });
+        const batch = db.batch();
+        for (const { studentId, notas } of normalizadas) {
+            const existente = existentesPorAlumno.get(studentId);
+            const docRef = existente || db.collection('calificaciones').doc();
+            batch.set(docRef, {
+                studentId,
+                materiaId,
+                materia: materiaData.nombre || '',
+                anio: anioLectivo,
+                trimestre: trimestreNum,
+                notas,
+                updatedAt: firestore_1.FieldValue.serverTimestamp(),
+                updatedBy: callerClaims.uid,
+                ...(existente ? {} : { createdAt: firestore_1.FieldValue.serverTimestamp() })
+            }, { merge: true });
+        }
+        await batch.commit();
+        res.status(200).send({
+            message: 'Calificaciones guardadas correctamente.',
+            saved: normalizadas.length,
+            materiaId,
+            trimestre: trimestreNum,
+            anio: anioLectivo
+        });
+    }
+    catch (error) {
+        console.error('Error en cf_saveGrades:', error);
         res.status(500).send({ error: error.message || 'Error interno.' });
     }
 });

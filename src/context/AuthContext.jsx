@@ -5,7 +5,9 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signInWithCustomToken,
-  signOut
+  signOut,
+  EmailAuthProvider,
+  reauthenticateWithCredential
 } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 
@@ -109,7 +111,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
-   * Método para cambiar contraseña y limpiar la bandera mustChangePassword
+   * Método para cambiar contraseña y renovar la sesión.
+   * La bandera mustChangePassword se actualiza desde Firestore al recargar.
    */
   const changePasswordReal = async (newPassword) => {
     if (!user) throw new Error("No hay un usuario autenticado.");
@@ -152,17 +155,26 @@ export const AuthProvider = ({ children }) => {
         const errData = await response.json();
         throw new Error(errData.error || 'Error al actualizar la contraseña.');
       }
-    }
 
-    // Actualizar el estado del usuario localmente para remover el bloqueo de contraseña
-    setUser(prev => prev ? { ...prev, mustChangePassword: false } : null);
-    
-    // Sincronizar en localStorage
-    const savedUser = localStorage.getItem('school_user');
-    if (savedUser) {
-      const parsed = JSON.parse(savedUser);
-      parsed.mustChangePassword = false;
-      localStorage.setItem('school_user', JSON.stringify(parsed));
+      // El cambio de contraseña del servidor invalida los tokens anteriores.
+      // Reautenticamos con la nueva clave para que el panel reciba un token válido.
+      const currentUser = auth.currentUser;
+      if (!currentUser?.email) {
+        await signOut(auth);
+        throw new Error('La contraseña se actualizó. Iniciá sesión nuevamente.');
+      }
+
+      try {
+        await reauthenticateWithCredential(
+          currentUser,
+          EmailAuthProvider.credential(currentUser.email, newPassword)
+        );
+        await currentUser.getIdToken(true);
+      } catch (reauthError) {
+        console.error('Error reautenticando tras el cambio de contraseña:', reauthError);
+        await signOut(auth);
+        throw new Error('La contraseña se actualizó. Iniciá sesión nuevamente con la nueva contraseña.');
+      }
     }
   };
 

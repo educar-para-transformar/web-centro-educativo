@@ -21,6 +21,7 @@ const bcrypt = require('../functions/node_modules/bcryptjs');
 
 const PROJECT_ID = 'centro-educativo-f5cc5';
 
+// Catálogo canónico: debe coincidir con src/pages/AdminPanel.jsx y functions/src/index.ts.
 const MATERIAS_POR_NIVEL = {
   secundaria: [
     { id: 'sec-matematica', nombre: 'Matemática' },
