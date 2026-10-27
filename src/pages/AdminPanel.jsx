@@ -241,7 +241,7 @@ const AdminPanel = () => {
 
       setSuccessModalData({
         title: '¡Tutor y Alumnos Creados!',
-        message: `Se ha registrado a ${parentName} con DNI ${parentDni}. Las cuentas han sido activadas. El tutor podrá ingresar usando su DNI como contraseña temporal.`
+        message: `Se ha registrado a ${parentName} con DNI ${parentDni}. Las cuentas fueron creadas correctamente. El tutor podrá ingresar usando su DNI como contraseña temporal.`
       });
       setSuccessModalOpen(true);
 
@@ -665,7 +665,7 @@ const AdminPanel = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
           <div>
             <h1 className="font-headline text-4xl font-extrabold text-slate-800 tracking-tight">Panel de Administración</h1>
-            <p className="font-body text-slate-500 mt-2">Gestión de tutores, estudiantes y activación de credenciales.</p>
+            <p className="font-body text-slate-500 mt-2">Gestión de tutores, estudiantes y credenciales.</p>
           </div>
 
           {/* Tab Selection buttons */}
@@ -1666,10 +1666,13 @@ const AdminPanel = () => {
                   ) : (
                     <>
                       <Icon name="person_add" className="mr-2" />
-                      <span>Crear Cuentas y Enviar Activación</span>
+                      <span>Crear Cuentas</span>
                     </>
                   )}
                 </button>
+                <p className="text-xs text-slate-500 text-center">
+                  La clave inicial del tutor y de los alumnos será su DNI.
+                </p>
               </form>
             ) : (
               <form onSubmit={handleCreateAdminSubmit} className="space-y-8">

@@ -308,12 +308,9 @@ const Login = () => {
                   >
                     Contraseña
                   </label>
-                  <a
-                    className="font-label text-sm font-medium text-orange-600 hover:text-orange-700 transition-colors"
-                    href="#"
-                  >
-                    ¿Olvidaste tu contraseña?
-                  </a>
+                  <span className="font-label text-xs text-slate-400">
+                    Pedí el reseteo a administración
+                  </span>
                 </div>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -389,12 +386,9 @@ const Login = () => {
               <p className="font-body text-sm text-slate-500">
                 ¿Necesitas ayuda para acceder a tu cuenta?{' '}
                 <br className="sm:hidden" />
-                <a
-                  className="font-medium text-orange-600 hover:text-orange-700 transition-colors"
-                  href="#"
-                >
-                  Contactar Soporte
-                </a>
+                <span className="font-medium text-slate-600">
+                  Solicitá asistencia a la administración del centro.
+                </span>
               </p>
             </div>
           </div>
