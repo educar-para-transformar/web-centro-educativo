@@ -34,10 +34,97 @@ const TRIMESTRES = [1, 2, 3];
 const TABS = [
   { id: 'boletin', label: 'Mi boletín', icon: 'assignment' },
   { id: 'materias', label: 'Mis materias', icon: 'menu_book' },
+  { id: 'asistencias', label: 'Asistencias', icon: 'fact_check' },
+  { id: 'horarios', label: 'Horarios', icon: 'calendar_month' },
+  { id: 'materiales', label: 'Materiales', icon: 'folder_open' },
   { id: 'novedades', label: 'Novedades', icon: 'newspaper' },
 ];
 
+const DIAS_SEMANA = {
+  1: 'Lunes',
+  2: 'Martes',
+  3: 'Miércoles',
+  4: 'Jueves',
+  5: 'Viernes',
+  6: 'Sábado',
+};
+
+const ESTADOS_ASISTENCIA = {
+  presente: {
+    label: 'Presente',
+    icon: 'check_circle',
+    badge: 'bg-green-100 text-green-700',
+    dot: 'bg-green-500',
+  },
+  ausente: {
+    label: 'Ausente',
+    icon: 'cancel',
+    badge: 'bg-red-100 text-red-700',
+    dot: 'bg-red-500',
+  },
+  tarde: {
+    label: 'Tarde',
+    icon: 'schedule',
+    badge: 'bg-amber-100 text-amber-700',
+    dot: 'bg-amber-500',
+  },
+  justificada: {
+    label: 'Justificada',
+    icon: 'verified',
+    badge: 'bg-sky-100 text-sky-700',
+    dot: 'bg-sky-500',
+  },
+};
+
+const MATERIAL_TIPOS = {
+  pdf: {
+    label: 'PDF',
+    icon: 'picture_as_pdf',
+    badge: 'bg-red-100 text-red-700',
+  },
+  link: {
+    label: 'Enlace',
+    icon: 'link',
+    badge: 'bg-sky-100 text-sky-700',
+  },
+  video: {
+    label: 'Video',
+    icon: 'play_circle',
+    badge: 'bg-purple-100 text-purple-700',
+  },
+  documento: {
+    label: 'Documento',
+    icon: 'description',
+    badge: 'bg-amber-100 text-amber-700',
+  },
+  imagen: {
+    label: 'Imagen',
+    icon: 'image',
+    badge: 'bg-green-100 text-green-700',
+  },
+};
+
 const currentYear = new Date().getFullYear();
+
+const fetchStudentData = async (endpoint) => {
+  const idToken = await auth.currentUser?.getIdToken(true);
+  if (!idToken)
+    throw new Error('La sesión no es válida. Volvé a iniciar sesión.');
+
+  const response = await fetch(`${FUNCTIONS_BASE_URL}/${endpoint}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    },
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'No se pudo consultar la información.');
+  }
+  return data;
+};
 
 const formatNota = (nota) => (nota == null ? '—' : nota);
 
@@ -105,6 +192,20 @@ const StudentPanel = () => {
   const [noticias, setNoticias] = useState([]);
   const [isLoadingNoticias, setIsLoadingNoticias] = useState(true);
   const [noticiasError, setNoticiasError] = useState('');
+
+  const [asistencias, setAsistencias] = useState([]);
+  const [resumenAsistencias, setResumenAsistencias] = useState(null);
+  const [isLoadingAsistencias, setIsLoadingAsistencias] = useState(true);
+  const [asistenciasError, setAsistenciasError] = useState('');
+
+  const [horarios, setHorarios] = useState([]);
+  const [horarioAlumno, setHorarioAlumno] = useState(null);
+  const [isLoadingHorarios, setIsLoadingHorarios] = useState(true);
+  const [horariosError, setHorariosError] = useState('');
+
+  const [materiales, setMateriales] = useState([]);
+  const [isLoadingMateriales, setIsLoadingMateriales] = useState(true);
+  const [materialesError, setMaterialesError] = useState('');
 
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
@@ -234,6 +335,66 @@ const StudentPanel = () => {
     }
   }, [user]);
 
+  const fetchAsistencias = useCallback(async () => {
+    if (!user || user.role !== 'Estudiante') return;
+
+    setIsLoadingAsistencias(true);
+    setAsistenciasError('');
+    try {
+      const data = await fetchStudentData(
+        `cf_getStudentAttendance?anio=${selectedAnio}`
+      );
+      setAsistencias(data.asistencias || []);
+      setResumenAsistencias(data.resumen || null);
+    } catch (err) {
+      console.error('Error cargando asistencias:', err);
+      setAsistenciasError(
+        err.message || 'No se pudieron consultar las asistencias.'
+      );
+    } finally {
+      setIsLoadingAsistencias(false);
+    }
+  }, [user, selectedAnio]);
+
+  const fetchHorarios = useCallback(async () => {
+    if (!user || user.role !== 'Estudiante') return;
+
+    setIsLoadingHorarios(true);
+    setHorariosError('');
+    try {
+      const data = await fetchStudentData(
+        `cf_getStudentSchedule?anio=${selectedAnio}`
+      );
+      setHorarios(data.horarios || []);
+      setHorarioAlumno(data.alumno || null);
+    } catch (err) {
+      console.error('Error cargando horarios:', err);
+      setHorariosError(err.message || 'No se pudo consultar el horario.');
+    } finally {
+      setIsLoadingHorarios(false);
+    }
+  }, [user, selectedAnio]);
+
+  const fetchMateriales = useCallback(async () => {
+    if (!user || user.role !== 'Estudiante') return;
+
+    setIsLoadingMateriales(true);
+    setMaterialesError('');
+    try {
+      const data = await fetchStudentData(
+        `cf_getStudentMaterials?anio=${selectedAnio}`
+      );
+      setMateriales(data.materiales || []);
+    } catch (err) {
+      console.error('Error cargando materiales:', err);
+      setMaterialesError(
+        err.message || 'No se pudieron consultar los materiales.'
+      );
+    } finally {
+      setIsLoadingMateriales(false);
+    }
+  }, [user, selectedAnio]);
+
   useEffect(() => {
     fetchBoletin();
   }, [fetchBoletin]);
@@ -249,6 +410,18 @@ const StudentPanel = () => {
   useEffect(() => {
     fetchNoticias();
   }, [fetchNoticias]);
+
+  useEffect(() => {
+    fetchAsistencias();
+  }, [fetchAsistencias]);
+
+  useEffect(() => {
+    fetchHorarios();
+  }, [fetchHorarios]);
+
+  useEffect(() => {
+    fetchMateriales();
+  }, [fetchMateriales]);
 
   const handleLogout = () => {
     logout();
@@ -332,6 +505,34 @@ const StudentPanel = () => {
 
     return [...porId.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
   }, [misMaterias, materias, alumno, user]);
+
+  const horariosPorDia = useMemo(() => {
+    const grupos = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+    horarios.forEach((bloque) => {
+      if (grupos[bloque.dia]) grupos[bloque.dia].push(bloque);
+    });
+    return grupos;
+  }, [horarios]);
+
+  const resumenAsistencia = useMemo(() => {
+    if (resumenAsistencias) return resumenAsistencias;
+
+    const base = {
+      total: asistencias.length,
+      presente: 0,
+      ausente: 0,
+      tarde: 0,
+      justificada: 0,
+      porcentajeAsistencia: 0,
+    };
+    asistencias.forEach((item) => {
+      if (item.estado in base) base[item.estado] += 1;
+    });
+    const computables = base.presente + base.tarde + base.justificada;
+    base.porcentajeAsistencia =
+      base.total > 0 ? Math.round((computables / base.total) * 10000) / 100 : 0;
+    return base;
+  }, [asistencias, resumenAsistencias]);
 
   if (!user || user.role !== 'Estudiante') {
     return <div className="min-h-screen bg-slate-50"></div>;
@@ -783,6 +984,465 @@ const StudentPanel = () => {
     );
   };
 
+  const renderAsistencias = () => {
+    if (isLoadingAsistencias) {
+      return (
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-16 text-center text-slate-500">
+          <div className="animate-spin h-10 w-10 border-4 border-orange-500 border-t-transparent rounded-full mx-auto mb-5"></div>
+          <p className="font-semibold">Cargando tus asistencias...</p>
+        </div>
+      );
+    }
+
+    if (asistenciasError) {
+      return (
+        <div className="bg-red-50 border-l-4 border-red-500 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-red-800">
+          <div className="flex items-start gap-4">
+            <Icon name="error" className="text-red-500 text-2xl shrink-0" />
+            <p className="text-sm font-medium">{asistenciasError}</p>
+          </div>
+          <button
+            type="button"
+            onClick={fetchAsistencias}
+            className="shrink-0 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-sm rounded-full transition-colors cursor-pointer border-none"
+          >
+            Reintentar
+          </button>
+        </div>
+      );
+    }
+
+    if (asistencias.length === 0) {
+      return (
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-16 text-center">
+          <Icon
+            name="fact_check"
+            className="text-6xl text-slate-300 mx-auto mb-4"
+          />
+          <p className="font-bold text-lg text-slate-700">
+            No hay asistencias registradas en {selectedAnio}
+          </p>
+          <p className="text-sm text-slate-500 mt-1">
+            Cuando tus docentes registren la asistencia, aparecerá en esta
+            sección.
+          </p>
+        </div>
+      );
+    }
+
+    const resumen = resumenAsistencia;
+
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="print-avoid-break bg-gradient-to-br from-orange-500 to-amber-400 rounded-2xl p-5 text-white shadow-sm">
+            <div className="flex items-center gap-2 text-white/80">
+              <Icon name="percent" className="text-lg" />
+              <span className="text-[11px] font-bold uppercase tracking-wider">
+                Asistencia
+              </span>
+            </div>
+            <p className="font-headline text-3xl font-extrabold mt-2">
+              {resumen.porcentajeAsistencia.toFixed(1)}%
+            </p>
+          </div>
+          <div className="print-avoid-break bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <div className="flex items-center gap-2 text-green-600">
+              <Icon name="check_circle" className="text-lg" />
+              <span className="text-[11px] font-bold uppercase tracking-wider">
+                Presentes
+              </span>
+            </div>
+            <p className="font-headline text-3xl font-extrabold text-green-700 mt-2">
+              {resumen.presente}
+            </p>
+          </div>
+          <div className="print-avoid-break bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <div className="flex items-center gap-2 text-amber-600">
+              <Icon name="schedule" className="text-lg" />
+              <span className="text-[11px] font-bold uppercase tracking-wider">
+                Tardes
+              </span>
+            </div>
+            <p className="font-headline text-3xl font-extrabold text-amber-700 mt-2">
+              {resumen.tarde}
+            </p>
+          </div>
+          <div className="print-avoid-break bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <div className="flex items-center gap-2 text-red-600">
+              <Icon name="cancel" className="text-lg" />
+              <span className="text-[11px] font-bold uppercase tracking-wider">
+                Ausentes
+              </span>
+            </div>
+            <p className="font-headline text-3xl font-extrabold text-red-700 mt-2">
+              {resumen.ausente}
+            </p>
+          </div>
+          <div className="print-avoid-break bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <div className="flex items-center gap-2 text-sky-600">
+              <Icon name="verified" className="text-lg" />
+              <span className="text-[11px] font-bold uppercase tracking-wider">
+                Justificadas
+              </span>
+            </div>
+            <p className="font-headline text-3xl font-extrabold text-sky-700 mt-2">
+              {resumen.justificada}
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="font-headline font-bold text-xl text-slate-800">
+                Registro de asistencias
+              </h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Año lectivo {selectedAnio}
+              </p>
+            </div>
+            <span className="inline-flex items-center gap-1.5 self-start px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">
+              <Icon name="list_alt" className="text-sm" />
+              {asistencias.length} registro
+              {asistencias.length === 1 ? '' : 's'}
+            </span>
+          </div>
+
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-400 font-label font-bold text-xs uppercase tracking-wider">
+                  <th className="py-3.5 px-6">Fecha</th>
+                  <th className="py-3.5 px-4">Materia</th>
+                  <th className="py-3.5 px-4">Estado</th>
+                  <th className="py-3.5 px-4">Observación</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-body text-sm text-slate-700">
+                {asistencias.map((item) => {
+                  const estado =
+                    ESTADOS_ASISTENCIA[item.estado] ||
+                    ESTADOS_ASISTENCIA.presente;
+                  return (
+                    <tr
+                      key={item.id}
+                      className="hover:bg-slate-50/50 transition-colors"
+                    >
+                      <td className="py-4 px-6 font-mono text-xs text-slate-600">
+                        {formatFecha(item.fechaISO || item.fecha)}
+                      </td>
+                      <td className="py-4 px-4 font-semibold text-slate-800">
+                        {item.materia || '—'}
+                      </td>
+                      <td className="py-4 px-4">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${estado.badge}`}
+                        >
+                          <Icon name={estado.icon} className="text-sm" />
+                          {estado.label}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-slate-500">
+                        {item.observacion || '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="block md:hidden divide-y divide-slate-100">
+            {asistencias.map((item) => {
+              const estado =
+                ESTADOS_ASISTENCIA[item.estado] || ESTADOS_ASISTENCIA.presente;
+              return (
+                <div key={item.id} className="p-5 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-bold text-slate-800">
+                      {item.materia || 'Materia'}
+                    </p>
+                    <span
+                      className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${estado.badge}`}
+                    >
+                      <Icon name={estado.icon} className="text-sm" />
+                      {estado.label}
+                    </span>
+                  </div>
+                  <p className="text-xs font-mono text-slate-400">
+                    {formatFecha(item.fechaISO || item.fecha)}
+                  </p>
+                  {item.observacion && (
+                    <p className="text-xs text-slate-500">{item.observacion}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderHorarios = () => {
+    if (isLoadingHorarios) {
+      return (
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-16 text-center text-slate-500">
+          <div className="animate-spin h-10 w-10 border-4 border-orange-500 border-t-transparent rounded-full mx-auto mb-5"></div>
+          <p className="font-semibold">Cargando tu horario...</p>
+        </div>
+      );
+    }
+
+    if (horariosError) {
+      return (
+        <div className="bg-red-50 border-l-4 border-red-500 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-red-800">
+          <div className="flex items-start gap-4">
+            <Icon name="error" className="text-red-500 text-2xl shrink-0" />
+            <p className="text-sm font-medium">{horariosError}</p>
+          </div>
+          <button
+            type="button"
+            onClick={fetchHorarios}
+            className="shrink-0 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-sm rounded-full transition-colors cursor-pointer border-none"
+          >
+            Reintentar
+          </button>
+        </div>
+      );
+    }
+
+    if (horarios.length === 0) {
+      return (
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-16 text-center">
+          <Icon
+            name="calendar_month"
+            className="text-6xl text-slate-300 mx-auto mb-4"
+          />
+          <p className="font-bold text-lg text-slate-700">
+            Todavía no hay horario asignado
+          </p>
+          <p className="text-sm text-slate-500 mt-1">
+            Cuando el instituto publique el horario de tu curso, lo verás acá.
+          </p>
+        </div>
+      );
+    }
+
+    const dias = [1, 2, 3, 4, 5, 6].filter(
+      (dia) => dia <= 5 || horariosPorDia[dia]?.length > 0
+    );
+    const hoy = new Date().getDay();
+
+    return (
+      <div className="space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <p className="text-sm text-slate-500">
+            Horario semanal del año {selectedAnio}. Puede estar sujeto a
+            cambios.
+          </p>
+          <span className="inline-flex items-center gap-1.5 self-start px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">
+            <Icon name="calendar_month" className="text-sm" />
+            {horarioAlumno?.curso
+              ? `${horarioAlumno.curso}${horarioAlumno.division ? ` ${horarioAlumno.division}` : ''}`
+              : NIVELES_LABEL[horarioAlumno?.nivel] || 'Mi curso'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+          {dias.map((dia) => {
+            const bloques = horariosPorDia[dia] || [];
+            const esHoy = hoy === dia;
+            return (
+              <section
+                key={dia}
+                className={`bg-white rounded-3xl border shadow-sm overflow-hidden ${
+                  esHoy
+                    ? 'border-orange-300 ring-1 ring-orange-200'
+                    : 'border-slate-100'
+                }`}
+              >
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-2">
+                  <h3 className="font-headline font-bold text-lg text-slate-800">
+                    {DIAS_SEMANA[dia]}
+                  </h3>
+                  {esHoy && (
+                    <span className="px-2.5 py-1 rounded-full bg-orange-100 text-orange-700 text-[10px] font-bold uppercase tracking-wider">
+                      Hoy
+                    </span>
+                  )}
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {bloques.length === 0 ? (
+                    <p className="px-5 py-6 text-sm text-slate-400 text-center">
+                      Sin clases
+                    </p>
+                  ) : (
+                    bloques.map((bloque) => (
+                      <div
+                        key={bloque.id}
+                        className="px-5 py-4 flex items-start gap-4"
+                      >
+                        <div className="w-14 shrink-0 text-center">
+                          <p className="font-mono font-bold text-sm text-slate-700">
+                            {bloque.horaInicio}
+                          </p>
+                          <p className="font-mono text-[10px] text-slate-400 mt-0.5">
+                            {bloque.horaFin}
+                          </p>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-sm text-slate-800 leading-snug">
+                            {bloque.materia || 'Materia'}
+                          </p>
+                          {bloque.docente && (
+                            <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                              <Icon name="person" className="text-sm" />
+                              <span className="truncate">{bloque.docente}</span>
+                            </p>
+                          )}
+                          {bloque.aula && (
+                            <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
+                              <Icon name="location_on" className="text-sm" />
+                              <span className="truncate">{bloque.aula}</span>
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderMateriales = () => {
+    if (isLoadingMateriales) {
+      return (
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-16 text-center text-slate-500">
+          <div className="animate-spin h-10 w-10 border-4 border-orange-500 border-t-transparent rounded-full mx-auto mb-5"></div>
+          <p className="font-semibold">Cargando materiales...</p>
+        </div>
+      );
+    }
+
+    if (materialesError) {
+      return (
+        <div className="bg-red-50 border-l-4 border-red-500 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-red-800">
+          <div className="flex items-start gap-4">
+            <Icon name="error" className="text-red-500 text-2xl shrink-0" />
+            <p className="text-sm font-medium">{materialesError}</p>
+          </div>
+          <button
+            type="button"
+            onClick={fetchMateriales}
+            className="shrink-0 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-sm rounded-full transition-colors cursor-pointer border-none"
+          >
+            Reintentar
+          </button>
+        </div>
+      );
+    }
+
+    if (materiales.length === 0) {
+      return (
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-16 text-center">
+          <Icon
+            name="folder_open"
+            className="text-6xl text-slate-300 mx-auto mb-4"
+          />
+          <p className="font-bold text-lg text-slate-700">
+            Todavía no hay materiales disponibles
+          </p>
+          <p className="text-sm text-slate-500 mt-1">
+            Cuando tus docentes publiquen material de estudio, aparecerá en esta
+            sección.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <p className="text-sm text-slate-500">
+            Materiales de estudio compartidos por tus docentes.
+          </p>
+          <span className="inline-flex items-center gap-1.5 self-start px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">
+            <Icon name="folder_open" className="text-sm" />
+            {materiales.length} material
+            {materiales.length === 1 ? '' : 'es'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {materiales.map((material) => {
+            const tipo = MATERIAL_TIPOS[material.tipo] || MATERIAL_TIPOS.link;
+            return (
+              <article
+                key={material.id}
+                className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 flex flex-col gap-3 transition-colors hover:border-orange-200"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${tipo.badge}`}
+                  >
+                    <Icon name={tipo.icon} className="text-sm" />
+                    {tipo.label}
+                  </span>
+                  <span className="text-[11px] font-semibold text-slate-400">
+                    {formatFechaNovedad(material.createdAt)}
+                  </span>
+                </div>
+
+                <div>
+                  <h3 className="font-bold text-slate-800 leading-snug">
+                    {material.titulo}
+                  </h3>
+                  <p className="text-xs font-semibold text-orange-600 mt-1">
+                    {material.materia}
+                  </p>
+                </div>
+
+                {material.descripcion && (
+                  <p className="text-sm text-slate-500 line-clamp-3">
+                    {material.descripcion}
+                  </p>
+                )}
+
+                <div className="mt-auto pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+                  <p className="text-[11px] text-slate-400 truncate">
+                    {material.profesorNombre || 'Material del curso'}
+                  </p>
+                  {material.url ? (
+                    <a
+                      href={material.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 inline-flex items-center gap-1 px-3 py-2 rounded-full bg-orange-100 hover:bg-orange-200 text-orange-700 font-bold text-xs transition-colors no-underline"
+                    >
+                      Abrir
+                      <Icon name="open_in_new" className="text-sm" />
+                    </a>
+                  ) : (
+                    <span className="shrink-0 px-3 py-2 rounded-full bg-slate-100 text-slate-400 font-bold text-xs">
+                      Sin enlace
+                    </span>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const renderNovedades = () => {
     const renderNoticias = () => {
       if (isLoadingNoticias) {
@@ -941,7 +1601,8 @@ const StudentPanel = () => {
               Mi Panel de Estudiante
             </h1>
             <p className="font-body text-slate-500 mt-2">
-              Consultá tus calificaciones, materias y novedades del instituto.
+              Consultá tus calificaciones, asistencias, horario, materiales y
+              novedades del instituto.
             </p>
           </div>
           <div className="no-print flex flex-wrap items-center gap-2">
@@ -1040,6 +1701,15 @@ const StudentPanel = () => {
             </div>
             <div className="min-w-0">
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                Curso / División
+              </p>
+              <p className="font-semibold text-slate-700">
+                {[user?.curso, user?.division].filter(Boolean).join(' / ') ||
+                  '—'}
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                 Año lectivo
               </p>
               <p className="font-semibold text-slate-700">{selectedAnio}</p>
@@ -1086,7 +1756,9 @@ const StudentPanel = () => {
         </div>
 
         {/* Selector de año */}
-        {activeTab === 'boletin' && (
+        {['boletin', 'asistencias', 'horarios', 'materiales'].includes(
+          activeTab
+        ) && (
           <div className="no-print flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
             <div className="flex items-center gap-2">
               <label
@@ -1111,7 +1783,7 @@ const StudentPanel = () => {
               </select>
             </div>
             <p className="text-xs text-slate-400">
-              Podés consultar los boletines de años anteriores disponibles.
+              Filtrá la información del panel por año lectivo.
             </p>
           </div>
         )}
@@ -1119,6 +1791,9 @@ const StudentPanel = () => {
         {/* Contenido de la sección activa */}
         {activeTab === 'boletin' && renderBoletin()}
         {activeTab === 'materias' && renderMaterias()}
+        {activeTab === 'asistencias' && renderAsistencias()}
+        {activeTab === 'horarios' && renderHorarios()}
+        {activeTab === 'materiales' && renderMateriales()}
         {activeTab === 'novedades' && renderNovedades()}
       </main>
 

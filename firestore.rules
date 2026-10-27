@@ -56,6 +56,44 @@ service cloud.firestore {
       );
     }
 
+    // Colección asistencias (Registro de asistencia por alumno, materia y fecha)
+    match /asistencias/{asistenciaId} {
+      // Las escrituras se realizan solo a través de las Cloud Functions.
+      allow write: if false;
+
+      // Lectura: el propio alumno, su tutor, o un administrador.
+      allow read: if request.auth != null && (
+        resource.data.studentId == request.auth.uid ||
+        request.auth.token.role == 'user_admin' ||
+        (exists(/databases/$(database)/documents/students/$(resource.data.studentId)) &&
+         get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.parentId == request.auth.uid)
+      );
+    }
+
+    // Colección horarios (Bloques horarios por nivel/curso)
+    match /horarios/{horarioId} {
+      // Las escrituras se realizan solo a través de las Cloud Functions.
+      allow write: if false;
+
+      // Lectura para usuarios autenticados de la comunidad educativa.
+      allow read: if request.auth != null;
+    }
+
+    // Colección materiales (Materiales de estudio por materia)
+    match /materiales/{materialId} {
+      // Las escrituras se realizan solo a través de las Cloud Functions.
+      allow write: if false;
+
+      // Lectura para usuarios autenticados de la comunidad educativa.
+      allow read: if request.auth != null;
+    }
+
+    // Colección passwordResets (Tokens de recuperación de contraseña)
+    match /passwordResets/{tokenHash} {
+      // Acceso exclusivo desde Cloud Functions con Admin SDK.
+      allow read, write: if false;
+    }
+
     // Colección news (Noticias del portal)
     match /news/{newsId} {
       // Las noticias son públicas para que cualquier visitante del sitio pueda leerlas

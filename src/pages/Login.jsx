@@ -77,7 +77,7 @@ const Login = () => {
     try {
       await login(identifier, password);
     } catch (err) {
-      handleErrors(err.code)
+      handleErrors(err.code);
     } finally {
       setIsSubmitting(false);
     }
@@ -86,14 +86,12 @@ const Login = () => {
   const handleErrors = (errorCOde) => {
     switch (errorCOde) {
       case 'auth/invalid-credential':
-          setLoginError('Credenciales inválidas. Verifica tu ID o correo.');
-          break;
+        setLoginError('Credenciales inválidas. Verifica tu ID o correo.');
+        break;
       default:
-          setLoginError(
-            'Error al iniciar sesión. Revisa tus credenciales.'
-          );
+        setLoginError('Error al iniciar sesión. Revisa tus credenciales.');
     }
-  }
+  };
 
   const handleLogout = () => {
     logout();
@@ -308,12 +306,13 @@ const Login = () => {
                   >
                     Contraseña
                   </label>
-                  <a
-                    className="font-label text-sm font-medium text-orange-600 hover:text-orange-700 transition-colors"
-                    href="#"
+                  <button
+                    className="font-label text-sm font-medium text-orange-600 hover:text-orange-700 transition-colors cursor-pointer bg-transparent border-none p-0"
+                    type="button"
+                    onClick={() => navigate('/forgot-password')}
                   >
                     ¿Olvidaste tu contraseña?
-                  </a>
+                  </button>
                 </div>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">

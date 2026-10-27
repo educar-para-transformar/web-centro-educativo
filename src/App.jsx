@@ -4,6 +4,7 @@ import ChangePasswordModal from './components/organisms/ChangePasswordModal';
 import AdminPanel from './pages/AdminPanel';
 import Contact from './pages/Contact';
 import EmploymentRequest from './pages/EmploymentRequest';
+import ForgotPassword from './pages/ForgotPassword';
 import Gallery from './pages/Gallery';
 import Home from './pages/Home';
 import Levels from './pages/Levels';
@@ -11,6 +12,7 @@ import Login from './pages/Login';
 import News from './pages/News';
 import NotFound from './pages/NotFound';
 import Registration from './pages/Registration';
+import ResetPassword from './pages/ResetPassword';
 import Wellness from './pages/Wellness';
 
 import Privacy from './pages/Privacy';
@@ -31,6 +33,8 @@ function App() {
         <Route path="/wellness" element={<Wellness />} />
         <Route path="/levels" element={<Levels />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/admin" element={<AdminPanel />} />
         <Route path="/panel-alumno" element={<StudentPanel />} />
         <Route path="/panel-docente" element={<TeacherPanel />} />
