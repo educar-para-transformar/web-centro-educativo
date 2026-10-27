@@ -5,8 +5,18 @@ import NewsCard from '../components/molecules/NewsCard';
 import EventCard from '../components/molecules/EventCard';
 import NewsHero from '../components/organisms/NewsHero';
 import { useAuth } from '../context/AuthContext';
+import { schoolEvents } from '../services/schoolEvents';
 import { db } from '../services/firebase';
-import { collection, getDocs, addDoc, serverTimestamp, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  addDoc,
+  serverTimestamp,
+  query,
+  orderBy,
+  deleteDoc,
+  doc,
+} from 'firebase/firestore';
 
 import { images } from '../services/imagesConfig';
 const { pool, robotica, feria, basket, lectura } = images;
@@ -50,39 +60,8 @@ const getCategoryClass = (category, isFeatured = false) => {
   }
 };
 
-// Mock event list data (static, defined at module scope to prevent re-creation on render)
-const events = [
-  {
-    id: 'event-1',
-    day: '15',
-    month: 'Nov',
-    title: 'Día de la Familia',
-    info: '10:00 AM - Campus Principal',
-    icon: 'schedule',
-    dateBgClass: 'bg-secondary-fixed text-on-secondary-fixed',
-    glowClass: 'bg-secondary-container',
-  },
-  {
-    id: 'event-2',
-    day: '22',
-    month: 'Nov',
-    title: 'Concierto de Primavera',
-    info: 'Auditorio Escolar',
-    icon: 'location_on',
-    dateBgClass: 'bg-primary-container text-on-primary-container',
-    glowClass: 'bg-primary-container',
-  },
-  {
-    id: 'event-3',
-    day: '05',
-    month: 'Dic',
-    title: 'Muestra de Arte',
-    info: 'Galería Principal',
-    icon: 'palette',
-    dateBgClass: 'bg-tertiary-container text-on-tertiary-container',
-    glowClass: 'bg-tertiary-container',
-  },
-];
+// Calendario escolar estático compartido con el panel del alumno.
+const events = schoolEvents;
 
 // Click callback (defined at module scope to prevent re-creation on render)
 const handleCardInteraction = (title) => {
@@ -91,10 +70,10 @@ const handleCardInteraction = (title) => {
 
 const News = () => {
   const { user } = useAuth();
-  
+
   // Admin detection state
   const [isAdmin, setIsAdmin] = useState(false);
-  
+
   // Dynamic news list from Firestore
   const [articles, setArticles] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -135,60 +114,67 @@ const News = () => {
     try {
       const q = query(collection(db, 'news'), orderBy('createdAt', 'desc'));
       const querySnapshot = await getDocs(q);
-      let fetched = querySnapshot.docs.map(doc => ({
+      let fetched = querySnapshot.docs.map((doc) => ({
         id: doc.id,
-        ...doc.data()
+        ...doc.data(),
       }));
 
       // Autosebrado (Database Seeding) if collection is empty
       if (fetched.length === 0) {
-        console.log('Colección "news" de Firestore vacía. Inicializando con noticias premium por defecto...');
+        console.log(
+          'Colección "news" de Firestore vacía. Inicializando con noticias premium por defecto...'
+        );
         const defaultArticles = [
           {
             title: 'Feria de Ciencias 2024: Innovación Estudiantil',
-            subtitle: 'Nuestros alumnos de secundaria presentaron proyectos increíbles sobre energías renovables y robótica aplicada. ¡Un orgullo para toda la comunidad!',
+            subtitle:
+              'Nuestros alumnos de secundaria presentaron proyectos increíbles sobre energías renovables y robótica aplicada. ¡Un orgullo para toda la comunidad!',
             category: 'Destacado',
             image: 'feria',
             buttonText: 'Leer más',
             isFeatured: true,
-            createdAt: new Date(Date.now() - 1000)
+            createdAt: new Date(Date.now() - 1000),
           },
           {
             title: 'Nuevos Espacios de Lectura al Aire Libre',
-            subtitle: 'Hemos inaugurado tres nuevas zonas verdes equipadas especialmente para fomentar la lectura y el aprendizaje en contacto con la naturaleza durante los recreos.',
+            subtitle:
+              'Hemos inaugurado tres nuevas zonas verdes equipadas especialmente para fomentar la lectura y el aprendizaje en contacto con la naturaleza durante los recreos.',
             category: 'Institucional',
             image: 'lectura',
             buttonText: 'Ver detalles',
             isFeatured: false,
-            createdAt: new Date(Date.now() - 3600000)
+            createdAt: new Date(Date.now() - 3600000),
           },
           {
             title: 'Campeones del Torneo Intercolegial',
-            subtitle: 'Nuestra selección sub-16 de baloncesto se consagró campeona regional tras un emocionante partido final. Felicitaciones a los jugadores y al cuerpo técnico.',
+            subtitle:
+              'Nuestra selección sub-16 de baloncesto se consagró campeona regional tras un emocionante partido final. Felicitaciones a los jugadores y al cuerpo técnico.',
             category: 'Deportes',
             image: 'basket',
             buttonText: 'Ver galería',
             isFeatured: false,
-            createdAt: new Date(Date.now() - 7200000)
+            createdAt: new Date(Date.now() - 7200000),
           },
           {
             title: 'Taller Maker: Robótica e Impresión 3D',
-            subtitle: 'Inscripciones abiertas para el nuevo taller maker donde los estudiantes aprenderán a diseñar, construir e imprimir sus propios prototipos tridimensionales.',
+            subtitle:
+              'Inscripciones abiertas para el nuevo taller maker donde los estudiantes aprenderán a diseñar, construir e imprimir sus propios prototipos tridimensionales.',
             category: 'Tecnología',
             image: 'robotica',
             buttonText: 'Inscribirse',
             isFeatured: false,
-            createdAt: new Date(Date.now() - 10800000)
+            createdAt: new Date(Date.now() - 10800000),
           },
           {
             title: 'Inauguración de la Pileta Climatizada',
-            subtitle: 'A partir de la próxima semana comienzan los entrenamientos de natación libre y las clases curriculares en nuestro moderno complejo climatizado.',
+            subtitle:
+              'A partir de la próxima semana comienzan los entrenamientos de natación libre y las clases curriculares en nuestro moderno complejo climatizado.',
             category: 'Deportes',
             image: 'pool',
             buttonText: 'Ver horarios',
             isFeatured: false,
-            createdAt: new Date(Date.now() - 14400000)
-          }
+            createdAt: new Date(Date.now() - 14400000),
+          },
         ];
 
         for (const art of defaultArticles) {
@@ -196,23 +182,26 @@ const News = () => {
         }
 
         const reSnapshot = await getDocs(q);
-        fetched = reSnapshot.docs.map(doc => ({
+        fetched = reSnapshot.docs.map((doc) => ({
           id: doc.id,
-          ...doc.data()
+          ...doc.data(),
         }));
       }
 
       setArticles(fetched);
     } catch (err) {
       console.error('Error cargando noticias de Firestore:', err);
-      setDataError('No se pudieron cargar las noticias dinámicas. Mostrando datos locales de respaldo.');
-      
+      setDataError(
+        'No se pudieron cargar las noticias dinámicas. Mostrando datos locales de respaldo.'
+      );
+
       // Local fallback data
       setArticles([
         {
           id: 'fallback-1',
           title: 'Feria de Ciencias 2024: Innovación Estudiantil',
-          subtitle: 'Nuestros alumnos de secundaria presentaron proyectos increíbles sobre energías renovables y robótica aplicada. ¡Un orgullo para toda la comunidad!',
+          subtitle:
+            'Nuestros alumnos de secundaria presentaron proyectos increíbles sobre energías renovables y robótica aplicada. ¡Un orgullo para toda la comunidad!',
           category: 'Destacado',
           image: 'feria',
           buttonText: 'Leer más',
@@ -221,7 +210,8 @@ const News = () => {
         {
           id: 'fallback-2',
           title: 'Nuevos Espacios de Lectura al Aire Libre',
-          subtitle: 'Hemos inaugurado tres nuevas zonas verdes equipadas especialmente para fomentar la lectura y el aprendizaje en contacto con la naturaleza durante los recreos.',
+          subtitle:
+            'Hemos inaugurado tres nuevas zonas verdes equipadas especialmente para fomentar la lectura y el aprendizaje en contacto con la naturaleza durante los recreos.',
           category: 'Institucional',
           image: 'lectura',
           buttonText: 'Ver detalles',
@@ -230,12 +220,13 @@ const News = () => {
         {
           id: 'fallback-3',
           title: 'Campeones del Torneo Intercolegial',
-          subtitle: 'Nuestra selección sub-16 de baloncesto se consagró campeona regional tras un emocionante partido final. Felicitaciones a los jugadores y al cuerpo técnico.',
+          subtitle:
+            'Nuestra selección sub-16 de baloncesto se consagró campeona regional tras un emocionante partido final. Felicitaciones a los jugadores y al cuerpo técnico.',
           category: 'Deportes',
           image: 'basket',
           buttonText: 'Ver galería',
           isFeatured: false,
-        }
+        },
       ]);
     } finally {
       setIsLoading(false);
@@ -247,10 +238,12 @@ const News = () => {
   }, []);
 
   // Resolve featured article (newest marked as featured, or the first article if none)
-  const featuredArticle = articles.find(a => a.isFeatured) || articles[0];
+  const featuredArticle = articles.find((a) => a.isFeatured) || articles[0];
 
   // Filter out the featured article from the secondary list
-  const secondaryArticles = articles.filter(a => a.id !== featuredArticle?.id);
+  const secondaryArticles = articles.filter(
+    (a) => a.id !== featuredArticle?.id
+  );
 
   const visibleSecondaryArticles = secondaryArticles.slice(0, visibleCount);
   const hasMore = secondaryArticles.length > visibleCount;
@@ -258,14 +251,18 @@ const News = () => {
   const handleLoadMore = () => {
     setIsLoadingMore(true);
     setTimeout(() => {
-      setVisibleCount(prev => prev + 2);
+      setVisibleCount((prev) => prev + 2);
       setIsLoadingMore(false);
     }, 800);
   };
 
   // Delete news from Firestore
   const handleDeleteNews = async (articleId, articleTitle) => {
-    if (!window.confirm(`¿Estás seguro de que deseas eliminar la noticia "${articleTitle}"?`)) {
+    if (
+      !window.confirm(
+        `¿Estás seguro de que deseas eliminar la noticia "${articleTitle}"?`
+      )
+    ) {
       return;
     }
 
@@ -284,13 +281,18 @@ const News = () => {
     setFormError('');
 
     if (!titleInput.trim() || !subtitleInput.trim()) {
-      setFormError('Por favor, completa el título y subtítulo/copete de la noticia.');
+      setFormError(
+        'Por favor, completa el título y subtítulo/copete de la noticia.'
+      );
       return;
     }
 
-    const imageToSave = imageType === 'predefined' ? selectedPredefined : customUrl.trim();
+    const imageToSave =
+      imageType === 'predefined' ? selectedPredefined : customUrl.trim();
     if (!imageToSave) {
-      setFormError('Por favor, selecciona una imagen predefinida o ingresa una URL de imagen.');
+      setFormError(
+        'Por favor, selecciona una imagen predefinida o ingresa una URL de imagen.'
+      );
       return;
     }
 
@@ -323,7 +325,9 @@ const News = () => {
       await fetchNews();
     } catch (err) {
       console.error('Error guardando la noticia en Firestore:', err);
-      setFormError('Ocurrió un error al guardar la noticia en la base de datos.');
+      setFormError(
+        'Ocurrió un error al guardar la noticia en la base de datos.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -345,8 +349,13 @@ const News = () => {
                 <Icon name="admin_panel_settings" className="text-2xl" />
               </div>
               <div>
-                <h2 className="font-headline font-bold text-lg">Modo Administrador Activo</h2>
-                <p className="text-xs text-orange-100 mt-0.5">Puedes crear nuevas noticias y guardarlas directamente en la base de datos de Firebase.</p>
+                <h2 className="font-headline font-bold text-lg">
+                  Modo Administrador Activo
+                </h2>
+                <p className="text-xs text-orange-100 mt-0.5">
+                  Puedes crear nuevas noticias y guardarlas directamente en la
+                  base de datos de Firebase.
+                </p>
               </div>
             </div>
             <button
@@ -363,13 +372,18 @@ const News = () => {
         {isLoading ? (
           <div className="py-20 text-center text-slate-500 flex flex-col items-center justify-center">
             <div className="animate-spin h-10 w-10 border-4 border-orange-500 border-t-transparent rounded-full mb-4"></div>
-            <p className="font-semibold text-lg">Cargando noticias y eventos...</p>
+            <p className="font-semibold text-lg">
+              Cargando noticias y eventos...
+            </p>
           </div>
         ) : (
           <>
             {dataError && (
               <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-xl flex items-center gap-3 text-amber-800 mb-6 text-left">
-                <Icon name="warning" className="text-amber-500 text-2xl animate-pulse" />
+                <Icon
+                  name="warning"
+                  className="text-amber-500 text-2xl animate-pulse"
+                />
                 <p className="text-sm font-medium">{dataError}</p>
               </div>
             )}
@@ -383,12 +397,19 @@ const News = () => {
                   title={featuredArticle.title}
                   subtitle={featuredArticle.subtitle}
                   category={featuredArticle.category}
-                  categoryClass={getCategoryClass(featuredArticle.category, true)}
+                  categoryClass={getCategoryClass(
+                    featuredArticle.category,
+                    true
+                  )}
                   image={resolveImage(featuredArticle.image)}
                   buttonText={featuredArticle.buttonText}
-                  onButtonClick={() => handleCardInteraction(featuredArticle.title)}
+                  onButtonClick={() =>
+                    handleCardInteraction(featuredArticle.title)
+                  }
                   showDelete={isAdmin}
-                  onDeleteClick={() => handleDeleteNews(featuredArticle.id, featuredArticle.title)}
+                  onDeleteClick={() =>
+                    handleDeleteNews(featuredArticle.id, featuredArticle.title)
+                  }
                 />
               )}
 
@@ -423,7 +444,9 @@ const News = () => {
                     buttonText={article.buttonText}
                     onButtonClick={() => handleCardInteraction(article.title)}
                     showDelete={isAdmin}
-                    onDeleteClick={() => handleDeleteNews(article.id, article.title)}
+                    onDeleteClick={() =>
+                      handleDeleteNews(article.id, article.title)
+                    }
                   />
                 ))}
               </div>
@@ -495,10 +518,11 @@ const News = () => {
 
             <form onSubmit={handleSubmitNews} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                
                 {/* Título */}
                 <div className="flex flex-col gap-1.5 md:col-span-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Título de la Noticia</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Título de la Noticia
+                  </label>
                   <input
                     type="text"
                     placeholder="Ej. Taller de Ciencias Innovador"
@@ -511,7 +535,9 @@ const News = () => {
 
                 {/* Subtítulo / Copete */}
                 <div className="flex flex-col gap-1.5 md:col-span-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Subtítulo / Copete</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Subtítulo / Copete
+                  </label>
                   <textarea
                     placeholder="Escribe un breve resumen de la noticia que capte la atención..."
                     value={subtitleInput}
@@ -524,7 +550,9 @@ const News = () => {
 
                 {/* Categoría */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Categoría</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Categoría
+                  </label>
                   <select
                     value={categoryInput}
                     onChange={(e) => setCategoryInput(e.target.value)}
@@ -540,7 +568,9 @@ const News = () => {
 
                 {/* Texto del Botón */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Texto del Botón</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Texto del Botón
+                  </label>
                   <input
                     type="text"
                     placeholder="Ej. Leer más, Ver detalles"
@@ -552,8 +582,10 @@ const News = () => {
 
                 {/* Origen de Imagen (Selector) */}
                 <div className="flex flex-col gap-2 md:col-span-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Imagen de Portada</label>
-                  
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Imagen de Portada
+                  </label>
+
                   <div className="flex gap-4 mb-2">
                     <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 cursor-pointer">
                       <input
@@ -598,7 +630,9 @@ const News = () => {
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             />
                           </div>
-                          <span className="text-[9px] font-bold text-slate-500 text-center leading-tight">{img.label}</span>
+                          <span className="text-[9px] font-bold text-slate-500 text-center leading-tight">
+                            {img.label}
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -623,9 +657,17 @@ const News = () => {
                     onChange={(e) => setIsFeaturedInput(e.target.checked)}
                     className="w-4 h-4 rounded text-orange-500 focus:ring-orange-500 border-slate-300"
                   />
-                  <label htmlFor="isFeatured" className="flex flex-col text-left cursor-pointer select-none">
-                    <span className="text-xs font-bold text-slate-700">Marcar como Noticia Principal (Destacada)</span>
-                    <span className="text-[10px] text-slate-400 mt-0.5">Se mostrará en la sección superior gigante del portal de noticias.</span>
+                  <label
+                    htmlFor="isFeatured"
+                    className="flex flex-col text-left cursor-pointer select-none"
+                  >
+                    <span className="text-xs font-bold text-slate-700">
+                      Marcar como Noticia Principal (Destacada)
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-0.5">
+                      Se mostrará en la sección superior gigante del portal de
+                      noticias.
+                    </span>
                   </label>
                 </div>
               </div>
@@ -652,9 +694,25 @@ const News = () => {
                 >
                   {isSubmitting ? (
                     <>
-                      <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      <svg
+                        className="animate-spin h-4 w-4 text-white"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
                       </svg>
                       <span>Guardando...</span>
                     </>
@@ -675,4 +733,3 @@ const News = () => {
 };
 
 export default News;
-
