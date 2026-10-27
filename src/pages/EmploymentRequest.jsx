@@ -5,24 +5,32 @@ import FileUploadZone from '../components/molecules/FileUploadZone';
 import SuccessModal from '../components/molecules/SuccessModal';
 import EmploymentHero from '../components/organisms/EmploymentHero';
 import EmploymentBento from '../components/organisms/EmploymentBento';
+import useFormState from '../hooks/useFormState';
 
 const EmploymentRequest = () => {
     // Form and UI refs for smooth scroll
     const bentoSectionRef = useRef(null);
     const formSectionRef = useRef(null);
 
-    // Form field states
-    const [formData, setFormData] = useState({
+    const {
+        formData,
+        setFormData,
+        errors,
+        setErrors,
+        isSubmitting,
+        setIsSubmitting,
+        submitSuccess,
+        setSubmitSuccess,
+        handleInputChange,
+    } = useFormState({
         name: '',
         email: '',
         area: '',
-        privacy: false
+        privacy: false,
     });
+
     const [cvFile, setCvFile] = useState(null);
     const [cvError, setCvError] = useState('');
-    const [errors, setErrors] = useState({});
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [submitSuccess, setSubmitSuccess] = useState(false);
 
     // Scroll helper
     const scrollToSection = (ref) => {
@@ -35,24 +43,6 @@ const EmploymentRequest = () => {
     const handleExploreArea = (areaValue) => {
         setFormData(prev => ({ ...prev, area: areaValue }));
         scrollToSection(formSectionRef);
-    };
-
-    // Form inputs change handlers
-    const handleInputChange = (e) => {
-        const { name, value, type, checked } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: type === 'checkbox' ? checked : value
-        }));
-        
-        // Clean error as the user types
-        if (errors[name]) {
-            setErrors(prev => {
-                const newErrors = { ...prev };
-                delete newErrors[name];
-                return newErrors;
-            });
-        }
     };
 
     // Form validations and submit

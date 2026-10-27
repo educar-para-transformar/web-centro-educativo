@@ -33,22 +33,43 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.cf_completePasswordChange = exports.cf_updateUserProfile = exports.cf_changeStudentPassword = exports.cf_resetUserPasswordToDni = exports.cf_createAdministrativeUser = exports.cf_resetStudentPassword = exports.cf_loginStudent = exports.cf_activateStudentAccount = exports.cf_updateParentEmailAndResend = exports.cf_resendActivationLink = exports.cf_createParentAndStudents = void 0;
+exports.cf_deleteSchedule = exports.cf_upsertSchedule = exports.cf_deleteMaterial = exports.cf_upsertMaterial = exports.cf_saveAttendance = exports.cf_getStudentMaterials = exports.cf_getStudentSchedule = exports.cf_getStudentAttendance = exports.cf_confirmStudentPasswordReset = exports.cf_requestStudentPasswordReset = exports.cf_saveGrades = exports.cf_getDocentePanel = exports.cf_setMateriaStudents = exports.cf_updateMateria = exports.cf_createMateria = exports.cf_seedMateriasYCalificaciones = exports.cf_getStudentGrades = exports.cf_completePasswordChange = exports.cf_updateUserProfile = exports.cf_changeStudentPassword = exports.cf_resetUserPasswordToDni = exports.cf_createAdministrativeUser = exports.cf_resetStudentPassword = exports.cf_loginStudent = exports.cf_activateStudentAccount = exports.cf_updateParentEmailAndResend = exports.cf_resendActivationLink = exports.cf_createParentAndStudents = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const admin = __importStar(require("firebase-admin"));
+const firestore_1 = require("firebase-admin/firestore");
 const crypto = __importStar(require("crypto"));
 const bcrypt = __importStar(require("bcryptjs"));
 const email_1 = require("./email");
 // Inicializar la SDK de Admin de Firebase
 admin.initializeApp();
 const db = admin.firestore();
+const APP_BASE_URL = (process.env.APP_BASE_URL || process.env.REDIRECT_URL || 'http://localhost:5173')
+    .replace(/\/+$/, '')
+    .replace(/\/auth-action$/, '');
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+const ATTENDANCE_STATES = ['presente', 'ausente', 'tarde', 'justificada'];
+const MATERIAL_TYPES = ['pdf', 'link', 'video', 'documento', 'imagen'];
+class HttpError extends Error {
+    status;
+    constructor(status, message) {
+        super(message);
+        this.status = status;
+    }
+}
+function sendFunctionError(res, error) {
+    const status = typeof error?.status === 'number' ? error.status : 500;
+    const message = status >= 500
+        ? 'Error interno del servidor.'
+        : error?.message || 'Solicitud inválida.';
+    res.status(status).send({ error: message });
+}
 /**
  * Helper para verificar el ID Token del llamador y retornar sus Claims decodificados.
  */
 async function verifyAuth(req) {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw new Error('No autorizado: Cabecera Authorization faltante o inválida.');
+        throw new HttpError(401, 'No autorizado: Cabecera Authorization faltante o inválida.');
     }
     const token = authHeader.split('Bearer ')[1];
     try {
@@ -56,8 +77,41 @@ async function verifyAuth(req) {
         return decodedToken;
     }
     catch (err) {
-        throw new Error('No autorizado: Token de ID inválido.');
+        console.error('[verifyAuth] Error verificando token:', err?.code || err?.errorInfo?.code || err?.message || err);
+        throw new HttpError(401, 'No autorizado: Token de ID inválido.');
     }
+}
+function sha256(value) {
+    return crypto.createHash('sha256').update(value).digest('hex');
+}
+async function invalidatePasswordResetTokens(studentId) {
+    const snapshot = await db
+        .collection('passwordResets')
+        .where('studentId', '==', studentId)
+        .get();
+    if (snapshot.empty)
+        return;
+    const batch = db.batch();
+    let cambios = 0;
+    snapshot.docs.forEach((doc) => {
+        if (!doc.data().used) {
+            batch.update(doc.ref, { used: true, usedAt: firestore_1.FieldValue.serverTimestamp() });
+            cambios++;
+        }
+    });
+    if (cambios > 0)
+        await batch.commit();
+}
+/**
+ * Resuelve el alumno objetivo de una consulta:
+ * - Estudiante: siempre su propio UID.
+ * - user_admin: puede indicar ?studentId= o body.studentId.
+ */
+function resolveStudentUid(callerClaims, requestedStudentId) {
+    if (callerClaims.role === 'user_admin' && requestedStudentId) {
+        return String(requestedStudentId);
+    }
+    return callerClaims.uid;
 }
 /**
  * Genera un ID único para estudiante en el formato EST-YYYY-XXXXX
@@ -127,7 +181,7 @@ exports.cf_createParentAndStudents = (0, https_1.onRequest)({ cors: true, invoke
                 genero: student.genero || '',
                 fechaNacimiento: student.fechaNacimiento || '',
                 nivel: student.nivel || 'inicial',
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
+                createdAt: firestore_1.FieldValue.serverTimestamp()
             });
             studentDocIds.push(studentRef.id);
             createdStudentsInfo.push({
@@ -145,7 +199,7 @@ exports.cf_createParentAndStudents = (0, https_1.onRequest)({ cors: true, invoke
             mustChangePassword: true,
             emailInvalid: false,
             studentIds: studentDocIds,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
+            createdAt: firestore_1.FieldValue.serverTimestamp()
         });
         res.status(201).send({
             parentUid: parentUser.uid,
@@ -154,7 +208,7 @@ exports.cf_createParentAndStudents = (0, https_1.onRequest)({ cors: true, invoke
     }
     catch (error) {
         console.error('Error en cf_createParentAndStudents:', error);
-        res.status(500).send({ error: error.message || 'Error interno del servidor.' });
+        sendFunctionError(res, error);
     }
 });
 /**
@@ -218,7 +272,7 @@ exports.cf_resendActivationLink = (0, https_1.onRequest)({ cors: true, invoker: 
                 return;
             }
             const activationToken = crypto.randomBytes(32).toString('hex');
-            const activationTokenExpires = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 48 * 60 * 60 * 1000));
+            const activationTokenExpires = firestore_1.Timestamp.fromDate(new Date(Date.now() + 48 * 60 * 60 * 1000));
             await db.collection('students').doc(targetId).update({
                 activationToken,
                 activationTokenExpires
@@ -245,7 +299,7 @@ exports.cf_resendActivationLink = (0, https_1.onRequest)({ cors: true, invoker: 
     }
     catch (error) {
         console.error('Error en cf_resendActivationLink:', error);
-        res.status(500).send({ error: error.message || 'Error interno.' });
+        sendFunctionError(res, error);
     }
 });
 /**
@@ -307,7 +361,7 @@ exports.cf_updateParentEmailAndResend = (0, https_1.onRequest)({ cors: true, inv
     }
     catch (error) {
         console.error('Error en cf_updateParentEmailAndResend:', error);
-        res.status(500).send({ error: error.message || 'Error interno.' });
+        sendFunctionError(res, error);
     }
 });
 /**
@@ -352,7 +406,7 @@ exports.cf_activateStudentAccount = (0, https_1.onRequest)({ cors: true, invoker
     }
     catch (error) {
         console.error('Error en cf_activateStudentAccount:', error);
-        res.status(500).send({ error: error.message || 'Error interno.' });
+        sendFunctionError(res, error);
     }
 });
 /**
@@ -397,7 +451,7 @@ exports.cf_loginStudent = (0, https_1.onRequest)({ cors: true, invoker: 'public'
     }
     catch (error) {
         console.error('Error en cf_loginStudent:', error);
-        res.status(500).send({ error: error.message || 'Error interno.' });
+        sendFunctionError(res, error);
     }
 });
 /**
@@ -412,7 +466,8 @@ exports.cf_resetStudentPassword = (0, https_1.onRequest)({ cors: true, invoker: 
             res.status(400).send({ error: 'Faltan parámetros requeridos (studentId).' });
             return;
         }
-        const studentRef = db.collection('students').doc(studentId);
+        const studentIdStr = String(studentId);
+        const studentRef = db.collection('students').doc(studentIdStr);
         const studentDoc = await studentRef.get();
         if (!studentDoc.exists) {
             res.status(404).send({ error: 'Estudiante no encontrado.' });
@@ -424,22 +479,27 @@ exports.cf_resetStudentPassword = (0, https_1.onRequest)({ cors: true, invoker: 
             res.status(403).send({ error: 'Permisos insuficientes.' });
             return;
         }
-        // Generar token temporal
-        const activationToken = crypto.randomBytes(32).toString('hex');
-        const activationTokenExpires = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 48 * 60 * 60 * 1000));
-        await studentRef.update({
-            activationToken,
-            activationTokenExpires
+        // Invalidar enlaces anteriores antes de generar uno nuevo.
+        await invalidatePasswordResetTokens(studentIdStr);
+        // Generar un token temporal de un solo uso. En la base solo guardamos su hash.
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const tokenHash = sha256(resetToken);
+        const expiresAt = firestore_1.Timestamp.fromMillis(Date.now() + PASSWORD_RESET_TTL_MS);
+        await db.collection('passwordResets').doc(tokenHash).set({
+            studentId: studentIdStr,
+            used: false,
+            createdAt: firestore_1.FieldValue.serverTimestamp(),
+            expiresAt,
+            requestedBy: callerClaims.uid,
         });
-        const redirectUrl = process.env.REDIRECT_URL || 'http://localhost:5173/auth-action';
-        const resetLink = `${redirectUrl}?mode=resetStudentPassword&token=${activationToken}&studentId=${studentId}`;
+        const resetLink = `${APP_BASE_URL}/reset-password?token=${resetToken}&studentId=${studentIdStr}`;
         const htmlContent = `
       <h1>Restablecimiento de Contraseña del Estudiante</h1>
       <p>Hola,</p>
       <p>Se ha solicitado restablecer la contraseña para el estudiante <strong>${studentData?.nombre || ''}</strong> (Usuario: ${studentData?.studentID_login}).</p>
       <p>Haga clic en el siguiente enlace para ingresar su nueva contraseña:</p>
       <p><a href="${resetLink}">Restablecer Contraseña</a></p>
-      <p>Este enlace es válido por 48 horas.</p>
+      <p>Este enlace es válido por 1 hora y puede usarse una sola vez.</p>
     `;
         await (0, email_1.sendEmail)({
             to: studentData?.emailPadre,
@@ -450,7 +510,7 @@ exports.cf_resetStudentPassword = (0, https_1.onRequest)({ cors: true, invoker: 
     }
     catch (error) {
         console.error('Error en cf_resetStudentPassword:', error);
-        res.status(500).send({ error: error.message || 'Error interno.' });
+        sendFunctionError(res, error);
     }
 });
 /**
@@ -491,7 +551,7 @@ exports.cf_createAdministrativeUser = (0, https_1.onRequest)({ cors: true, invok
             dni: dni.trim(),
             mustChangePassword: true,
             emailInvalid: false,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
+            createdAt: firestore_1.FieldValue.serverTimestamp()
         });
         res.status(201).send({
             uid: userRecord.uid
@@ -499,7 +559,7 @@ exports.cf_createAdministrativeUser = (0, https_1.onRequest)({ cors: true, invok
     }
     catch (error) {
         console.error('Error en cf_createAdministrativeUser:', error);
-        res.status(500).send({ error: error.message || 'Error interno.' });
+        sendFunctionError(res, error);
     }
 });
 /**
@@ -562,6 +622,7 @@ exports.cf_resetUserPasswordToDni = (0, https_1.onRequest)({ cors: true, invoker
                 hashedPassword,
                 mustChangePassword: true
             });
+            await invalidatePasswordResetTokens(String(userId));
             res.status(200).send({ message: 'Contraseña del estudiante restablecida exitosamente a su DNI.' });
         }
         else {
@@ -570,7 +631,7 @@ exports.cf_resetUserPasswordToDni = (0, https_1.onRequest)({ cors: true, invoker
     }
     catch (error) {
         console.error('Error en cf_resetUserPasswordToDni:', error);
-        res.status(500).send({ error: error.message || 'Error interno del servidor.' });
+        sendFunctionError(res, error);
     }
 });
 /**
@@ -596,11 +657,12 @@ exports.cf_changeStudentPassword = (0, https_1.onRequest)({ cors: true, invoker:
             hashedPassword,
             mustChangePassword: false
         });
+        await invalidatePasswordResetTokens(String(studentId));
         res.status(200).send({ message: 'Contraseña del estudiante actualizada con éxito.' });
     }
     catch (error) {
         console.error('Error en cf_changeStudentPassword:', error);
-        res.status(500).send({ error: error.message || 'Error interno.' });
+        sendFunctionError(res, error);
     }
 });
 /**
@@ -657,17 +719,29 @@ exports.cf_updateUserProfile = (0, https_1.onRequest)({ cors: true, invoker: 'pu
     }
     catch (error) {
         console.error('Error en cf_updateUserProfile:', error);
-        res.status(500).send({ error: error.message || 'Error interno.' });
+        sendFunctionError(res, error);
     }
 });
 /**
  * 11. cf_completePasswordChange
- * Invocada por cualquier usuario autenticado tras cambiar su contraseña para marcar mustChangePassword como false.
+ * Invocada por cualquier usuario autenticado tras configurar su nueva contraseña
+ * para actualizar el password en Auth (si se envía `newPassword`) y marcar
+ * mustChangePassword como false.
  */
 exports.cf_completePasswordChange = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
     try {
         const callerClaims = await verifyAuth(req);
         const role = callerClaims.role;
+        const { newPassword } = req.body;
+        // Cambiar la contraseña del lado del servidor para evitar usar un ID token
+        // emitido después de un updatePassword del cliente (que Firebase invalida).
+        if (newPassword) {
+            if (typeof newPassword !== 'string' || newPassword.length < 6) {
+                res.status(400).send({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
+                return;
+            }
+            await admin.auth().updateUser(callerClaims.uid, { password: newPassword });
+        }
         if (role === 'Estudiante') {
             await db.collection('students').doc(callerClaims.uid).update({ mustChangePassword: false });
         }
@@ -678,7 +752,1279 @@ exports.cf_completePasswordChange = (0, https_1.onRequest)({ cors: true, invoker
     }
     catch (error) {
         console.error('Error en cf_completePasswordChange:', error);
-        res.status(500).send({ error: error.message || 'Error interno.' });
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 12. cf_getStudentGrades
+ * Endpoint GET. Devuelve las calificaciones del alumno autenticado para su boletín.
+ * El alumno solo puede consultar SUS PROPIAS calificaciones (RF HU4).
+ * Un user_admin puede consultar las notas de cualquier alumno pasando ?studentId=.
+ */
+exports.cf_getStudentGrades = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        const role = callerClaims.role;
+        if (role !== 'Estudiante' && role !== 'user_admin') {
+            res.status(403).send({ error: 'Permisos insuficientes: Solo el alumno o un administrador puede consultar notas.' });
+            return;
+        }
+        // El alumno solo accede a su propio legajo; el admin puede indicar otro estudiante
+        let studentUid = callerClaims.uid;
+        if (role === 'user_admin' && req.query.studentId) {
+            studentUid = String(req.query.studentId);
+        }
+        const studentRef = db.collection('students').doc(studentUid);
+        const studentDoc = await studentRef.get();
+        if (!studentDoc.exists) {
+            res.status(404).send({ error: 'Estudiante no encontrado.' });
+            return;
+        }
+        const studentData = studentDoc.data() || {};
+        const anio = Number(req.query.anio) || new Date().getFullYear();
+        const califSnap = await db.collection('calificaciones')
+            .where('studentId', '==', studentUid)
+            .where('anio', '==', anio)
+            .get();
+        // Agrupar notas por materia y trimestre
+        const porMateria = new Map();
+        for (const doc of califSnap.docs) {
+            const data = doc.data();
+            const materiaId = data.materiaId;
+            if (!porMateria.has(materiaId)) {
+                porMateria.set(materiaId, { materia: data.materia || materiaId, trimestres: { 1: [], 2: [], 3: [] } });
+            }
+            const entry = porMateria.get(materiaId);
+            const trim = Number(data.trimestre);
+            if ((data.notas && Array.isArray(data.notas))) {
+                entry.trimestres[trim] = entry.trimestres[trim] || [];
+                entry.trimestres[trim].push(...data.notas.map((n) => Number(n)).filter((n) => !isNaN(n)));
+            }
+        }
+        const calcularPromedio = (notas) => notas.length > 0 ? Math.round((notas.reduce((a, b) => a + b, 0) / notas.length) * 100) / 100 : 0;
+        const CANT_TRIMESTRES = 3;
+        const materias = Array.from(porMateria.entries()).map(([materiaId, entry]) => {
+            const trimestres = [];
+            const promediosTrimestrales = [];
+            for (let t = 1; t <= CANT_TRIMESTRES; t++) {
+                const notas = entry.trimestres[t] || [];
+                const promedio = calcularPromedio(notas);
+                trimestres.push({ trimestre: t, notas, promedio });
+                if (notas.length > 0)
+                    promediosTrimestrales.push(promedio);
+            }
+            const promedioAnual = promediosTrimestrales.length > 0
+                ? Math.round((promediosTrimestrales.reduce((a, b) => a + b, 0) / promediosTrimestrales.length) * 100) / 100
+                : 0;
+            return { materiaId, materia: entry.materia, trimestres, promedioAnual };
+        });
+        const promediosGenerales = materias.filter(m => m.promedioAnual > 0).map(m => m.promedioAnual);
+        const promedioGeneral = promediosGenerales.length > 0
+            ? Math.round((promediosGenerales.reduce((a, b) => a + b, 0) / promediosGenerales.length) * 100) / 100
+            : 0;
+        res.status(200).send({
+            alumno: {
+                uid: studentUid,
+                nombre: studentData.nombre || '',
+                studentID_login: studentData.studentID_login || '',
+                dni: studentData.dni || '',
+                nivel: studentData.nivel || ''
+            },
+            anio,
+            materias,
+            promedioGeneral
+        });
+    }
+    catch (error) {
+        console.error('Error en cf_getStudentGrades:', error);
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 13. cf_seedMateriasYCalificaciones
+ * Invocada por un user_admin para registrar materias curriculares y generar
+ * calificaciones de ejemplo para los alumnos de un nivel (o de un alumno puntual).
+ * Permite poblar el boletín del alumno mientras el módulo docente está en desarrollo.
+ */
+// Catálogo canónico: debe coincidir con src/pages/AdminPanel.jsx y scripts/seed-emulators.mjs.
+const MATERIAS_POR_NIVEL = {
+    inicial: ['Juegos y Expresión', 'Lengua Inicial', 'Matemática Inicial', 'Mundo Natural y Social', 'Música', 'Educación Física'],
+    primaria: ['Matemática', 'Lengua y Literatura', 'Ciencias Naturales', 'Ciencias Sociales', 'Inglés', 'Educación Física'],
+    secundaria: ['Matemática', 'Lengua y Literatura', 'Historia', 'Geografía', 'Física', 'Química', 'Biología', 'Inglés', 'Educación Física']
+};
+exports.cf_seedMateriasYCalificaciones = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'user_admin') {
+            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            return;
+        }
+        const { nivel, studentId, anio } = req.body || {};
+        const materiasNivel = MATERIAS_POR_NIVEL[nivel];
+        if (!materiasNivel) {
+            res.status(400).send({ error: 'Nivel inválido. Debe ser inicial, primaria o secundaria.' });
+            return;
+        }
+        const anioLectivo = Number(anio) || new Date().getFullYear();
+        // 1) Registrar materias curriculares del nivel si aún no existen
+        const materiasIds = [];
+        const materiasPorId = {};
+        for (const nombre of materiasNivel) {
+            const existing = await db.collection('materias')
+                .where('nivel', '==', nivel)
+                .where('nombre', '==', nombre)
+                .limit(1)
+                .get();
+            let materiaRef;
+            if (existing.empty) {
+                const docRef = await db.collection('materias').add({
+                    nombre,
+                    nivel,
+                    createdAt: firestore_1.FieldValue.serverTimestamp()
+                });
+                materiaRef = docRef;
+            }
+            else {
+                materiaRef = existing.docs[0].ref;
+            }
+            materiasIds.push(materiaRef.id);
+            materiasPorId[materiaRef.id] = nombre;
+        }
+        // 2) Determinar los alumnos objetivo (uno puntual o todos los del nivel)
+        let alumnosSnap;
+        if (studentId) {
+            const doc = await db.collection('students').doc(studentId).get();
+            if (!doc.exists) {
+                res.status(404).send({ error: 'Estudiante no encontrado.' });
+                return;
+            }
+            alumnosSnap = { docs: [doc] };
+        }
+        else {
+            alumnosSnap = await db.collection('students').where('nivel', '==', nivel).get();
+        }
+        const alumnos = alumnosSnap.docs;
+        if (alumnos.length === 0) {
+            res.status(200).send({ message: 'Materias registradas. No hay alumnos en el nivel para cargar calificaciones.', materiasRegistradas: materiasIds.length, calificacionesCargadas: 0 });
+            return;
+        }
+        // 3) Generar calificaciones de ejemplo (3 trimestres, notas 1-10)
+        const CANT_TRIMESTRES = 3;
+        const CANT_NOTAS_POR_TRIMESTRE = 2;
+        let calificacionesCargadas = 0;
+        const generaNota = () => Math.floor(Math.random() * 10) + 1;
+        // Limpiar calificaciones previas del año para evitar duplicados
+        for (const alumnoDoc of alumnos) {
+            const prev = await db.collection('calificaciones')
+                .where('studentId', '==', alumnoDoc.id)
+                .where('anio', '==', anioLectivo)
+                .get();
+            if (!prev.empty) {
+                const batch = db.batch();
+                prev.docs.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+            }
+        }
+        for (const alumnoDoc of alumnos) {
+            for (const materiaId of materiasIds) {
+                for (let trimestre = 1; trimestre <= CANT_TRIMESTRES; trimestre++) {
+                    const notas = Array.from({ length: CANT_NOTAS_POR_TRIMESTRE }, generaNota);
+                    await db.collection('calificaciones').add({
+                        studentId: alumnoDoc.id,
+                        materiaId,
+                        materia: materiasPorId[materiaId] || materiaId,
+                        anio: anioLectivo,
+                        trimestre,
+                        notas,
+                        createdAt: firestore_1.FieldValue.serverTimestamp()
+                    });
+                    calificacionesCargadas++;
+                }
+            }
+        }
+        res.status(201).send({
+            message: 'Materias y calificaciones de ejemplo generadas con éxito.',
+            materiasRegistradas: materiasIds.length,
+            calificacionesCargadas
+        });
+    }
+    catch (error) {
+        console.error('Error en cf_seedMateriasYCalificaciones:', error);
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 14. cf_createMateria
+ * Invocada por un user_admin para registrar una materia curricular.
+ * El nombre debe ser único dentro del nivel educativo.
+ */
+exports.cf_createMateria = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'user_admin') {
+            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            return;
+        }
+        const { nombre, nivel, profesorUid } = req.body;
+        if (!nombre || !String(nombre).trim()) {
+            res.status(400).send({ error: 'El nombre de la materia es obligatorio.' });
+            return;
+        }
+        if (!['inicial', 'primaria', 'secundaria'].includes(nivel)) {
+            res.status(400).send({ error: 'Nivel inválido. Debe ser inicial, primaria o secundaria.' });
+            return;
+        }
+        const nombreLimpio = String(nombre).trim();
+        // Unicidad por nivel: "Matemática" puede existir en primaria y secundaria.
+        const duplicado = await db.collection('materias')
+            .where('nivel', '==', nivel)
+            .where('nombre', '==', nombreLimpio)
+            .limit(1)
+            .get();
+        if (!duplicado.empty) {
+            res.status(409).send({ error: `Ya existe una materia llamada "${nombreLimpio}" en el nivel ${nivel}.` });
+            return;
+        }
+        // Resolver datos del profesor a cargo (si se asigna uno)
+        let profesorNombre = null;
+        let profesorDni = null;
+        if (profesorUid) {
+            const userDoc = await db.collection('users').doc(profesorUid).get();
+            if (userDoc.exists) {
+                const userData = userDoc.data();
+                profesorNombre = userData?.nombre || null;
+                profesorDni = userData?.dni || null;
+            }
+        }
+        const docRef = await db.collection('materias').add({
+            nombre: nombreLimpio,
+            nivel,
+            profesorUid: profesorUid || null,
+            profesorNombre,
+            profesorDni,
+            createdAt: firestore_1.FieldValue.serverTimestamp()
+        });
+        res.status(201).send({ id: docRef.id, nombre: nombreLimpio });
+    }
+    catch (error) {
+        console.error('Error en cf_createMateria:', error);
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 15. cf_updateMateria
+ * Invocada por un user_admin para modificar los datos de una materia
+ * (nombre, nivel y profesor a cargo).
+ */
+exports.cf_updateMateria = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'user_admin') {
+            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            return;
+        }
+        const { materiaId, nombre, nivel, profesorUid } = req.body;
+        if (!materiaId || typeof materiaId !== 'string') {
+            res.status(400).send({ error: 'El ID de la materia es obligatorio.' });
+            return;
+        }
+        if (!nombre || !String(nombre).trim()) {
+            res.status(400).send({ error: 'El nombre de la materia es obligatorio.' });
+            return;
+        }
+        if (!['inicial', 'primaria', 'secundaria'].includes(nivel)) {
+            res.status(400).send({ error: 'Nivel inválido. Debe ser inicial, primaria o secundaria.' });
+            return;
+        }
+        const materiaRef = db.collection('materias').doc(materiaId);
+        const materiaDoc = await materiaRef.get();
+        if (!materiaDoc.exists) {
+            res.status(404).send({ error: 'La materia no existe.' });
+            return;
+        }
+        const nombreLimpio = String(nombre).trim();
+        // Verificar unicidad dentro del nivel, excluyendo la propia materia.
+        const duplicados = await db.collection('materias')
+            .where('nivel', '==', nivel)
+            .where('nombre', '==', nombreLimpio)
+            .get();
+        const conflicto = duplicados.docs.find((doc) => doc.id !== materiaId);
+        if (conflicto) {
+            res.status(409).send({ error: `Ya existe otra materia llamada "${nombreLimpio}" en el nivel ${nivel}.` });
+            return;
+        }
+        // Resolver datos del profesor a cargo (si se asigna uno)
+        let profesorNombre = null;
+        let profesorDni = null;
+        if (profesorUid) {
+            const userDoc = await db.collection('users').doc(profesorUid).get();
+            if (userDoc.exists) {
+                const userData = userDoc.data();
+                profesorNombre = userData?.nombre || null;
+                profesorDni = userData?.dni || null;
+            }
+        }
+        await materiaRef.update({
+            nombre: nombreLimpio,
+            nivel,
+            profesorUid: profesorUid || null,
+            profesorNombre,
+            profesorDni,
+            updatedAt: firestore_1.FieldValue.serverTimestamp()
+        });
+        res.status(200).send({ id: materiaId, nombre: nombreLimpio });
+    }
+    catch (error) {
+        console.error('Error en cf_updateMateria:', error);
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 16. cf_setMateriaStudents
+ * Invocada por un user_admin para asignar/desasignar alumnos a una materia.
+ * Solo se admiten alumnos del mismo nivel educativo que la materia.
+ */
+exports.cf_setMateriaStudents = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'user_admin') {
+            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            return;
+        }
+        const { materiaId, studentIds } = req.body;
+        if (!materiaId || typeof materiaId !== 'string') {
+            res.status(400).send({ error: 'El ID de la materia es obligatorio.' });
+            return;
+        }
+        if (!Array.isArray(studentIds) || studentIds.some((id) => typeof id !== 'string')) {
+            res.status(400).send({ error: 'studentIds debe ser un arreglo de IDs de alumnos.' });
+            return;
+        }
+        const materiaRef = db.collection('materias').doc(materiaId);
+        const materiaDoc = await materiaRef.get();
+        if (!materiaDoc.exists) {
+            res.status(404).send({ error: 'La materia no existe.' });
+            return;
+        }
+        const materiaNivel = materiaDoc.data()?.nivel;
+        // Validar que cada alumno exista y pertenezca al mismo nivel educativo que la materia
+        const idsUnicos = [...new Set(studentIds)];
+        for (const studentId of idsUnicos) {
+            const studentDoc = await db.collection('students').doc(studentId).get();
+            if (!studentDoc.exists) {
+                res.status(400).send({ error: `El alumno ${studentId} no existe.` });
+                return;
+            }
+            const studentData = studentDoc.data();
+            if (studentData?.nivel !== materiaNivel) {
+                res.status(400).send({ error: `El alumno ${studentData?.nombre || studentId} no pertenece al nivel ${materiaNivel}.` });
+                return;
+            }
+        }
+        await materiaRef.update({ studentIds: idsUnicos });
+        res.status(200).send({ id: materiaId, inscriptos: idsUnicos.length });
+    }
+    catch (error) {
+        console.error('Error en cf_setMateriaStudents:', error);
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 17. cf_getDocentePanel
+ * Endpoint GET exclusivo para docentes (rol Staff).
+ * Devuelve las materias asignadas, sus alumnos inscriptos y las
+ * calificaciones del año lectivo solicitado.
+ */
+exports.cf_getDocentePanel = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'Staff') {
+            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol Staff.' });
+            return;
+        }
+        const anio = Number(req.query.anio) || new Date().getFullYear();
+        // Perfil del docente y materias a su cargo.
+        const [docenteDoc, materiasSnap] = await Promise.all([
+            db.collection('users').doc(callerClaims.uid).get(),
+            db.collection('materias').where('profesorUid', '==', callerClaims.uid).get()
+        ]);
+        const materias = materiasSnap.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => {
+            const nivelA = String(a.nivel || '');
+            const nivelB = String(b.nivel || '');
+            return nivelA !== nivelB
+                ? nivelA.localeCompare(nivelB)
+                : String(a.nombre || '').localeCompare(String(b.nombre || ''));
+        });
+        // Cargar una sola vez todos los alumnos del docente.
+        const studentIds = [
+            ...new Set(materias.flatMap((materia) => Array.isArray(materia.studentIds) ? materia.studentIds : []))
+        ];
+        const studentDocs = await Promise.all(studentIds.map((studentId) => db.collection('students').doc(studentId).get()));
+        const studentsById = new Map();
+        studentDocs.forEach((doc) => {
+            if (!doc.exists)
+                return;
+            const data = doc.data() || {};
+            studentsById.set(doc.id, {
+                id: doc.id,
+                nombre: data.nombre || '',
+                studentID_login: data.studentID_login || ''
+            });
+        });
+        // Calificaciones del año, consultadas por materia.
+        const calificacionesSnaps = await Promise.all(materias.map((materia) => db.collection('calificaciones')
+            .where('materiaId', '==', materia.id)
+            .where('anio', '==', anio)
+            .get()));
+        const materiasConDatos = materias.map((materia, index) => {
+            const inscritos = Array.isArray(materia.studentIds) ? materia.studentIds : [];
+            const alumnos = inscritos
+                .map((studentId) => studentsById.get(studentId))
+                .filter(Boolean)
+                .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
+            const calificaciones = calificacionesSnaps[index].docs.map((doc) => {
+                const data = doc.data();
+                return {
+                    studentId: data.studentId,
+                    trimestre: Number(data.trimestre),
+                    notas: Array.isArray(data.notas)
+                        ? data.notas.map((nota) => Number(nota))
+                        : []
+                };
+            });
+            return {
+                id: materia.id,
+                nombre: materia.nombre || '',
+                nivel: materia.nivel || '',
+                alumnos,
+                calificaciones
+            };
+        });
+        res.status(200).send({
+            docente: {
+                uid: callerClaims.uid,
+                nombre: docenteDoc.data()?.nombre || '',
+                email: docenteDoc.data()?.email || callerClaims.email || ''
+            },
+            anio,
+            materias: materiasConDatos
+        });
+    }
+    catch (error) {
+        console.error('Error en cf_getDocentePanel:', error);
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 18. cf_saveGrades
+ * Guarda o actualiza las notas de una materia y trimestre.
+ * Un docente solo puede escribir en las materias que tiene asignadas
+ * y sobre alumnos inscriptos en ellas.
+ */
+exports.cf_saveGrades = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'Staff') {
+            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol Staff.' });
+            return;
+        }
+        const { materiaId, trimestre, anio, grades } = req.body || {};
+        if (!materiaId || typeof materiaId !== 'string' || !Array.isArray(grades)) {
+            res.status(400).send({ error: 'Faltan parámetros requeridos (materiaId, trimestre, grades).' });
+            return;
+        }
+        const trimestreNum = Number(trimestre);
+        if (![1, 2, 3].includes(trimestreNum)) {
+            res.status(400).send({ error: 'El trimestre debe ser 1, 2 o 3.' });
+            return;
+        }
+        const anioLectivo = Number(anio) || new Date().getFullYear();
+        if (!Number.isInteger(anioLectivo) || anioLectivo < 2000 || anioLectivo > 2100) {
+            res.status(400).send({ error: 'El año lectivo es inválido.' });
+            return;
+        }
+        const materiaDoc = await db.collection('materias').doc(materiaId).get();
+        if (!materiaDoc.exists) {
+            res.status(404).send({ error: 'La materia no existe.' });
+            return;
+        }
+        const materiaData = materiaDoc.data() || {};
+        if (materiaData.profesorUid !== callerClaims.uid) {
+            res.status(403).send({ error: 'No tenés permiso para cargar notas en esta materia.' });
+            return;
+        }
+        const inscriptos = new Set(Array.isArray(materiaData.studentIds) ? materiaData.studentIds : []);
+        if (inscriptos.size === 0) {
+            res.status(400).send({ error: 'La materia no tiene alumnos inscriptos.' });
+            return;
+        }
+        // Validar y normalizar cada fila enviada por el docente.
+        const normalizadas = [];
+        const alumnosProcesados = new Set();
+        for (const fila of grades) {
+            const studentId = fila?.studentId;
+            if (!studentId || !inscriptos.has(studentId)) {
+                res.status(400).send({ error: `El alumno ${studentId || 'desconocido'} no está inscripto en esta materia.` });
+                return;
+            }
+            if (alumnosProcesados.has(studentId)) {
+                res.status(400).send({ error: `El alumno ${studentId} está repetido en la carga.` });
+                return;
+            }
+            const notasRaw = Array.isArray(fila?.notas) ? fila.notas : [];
+            if (notasRaw.length > 10) {
+                res.status(400).send({ error: 'Se permiten hasta 10 notas por alumno y trimestre.' });
+                return;
+            }
+            const notas = notasRaw.map((nota) => Number(nota));
+            if (notas.some((nota) => !Number.isFinite(nota) || nota < 1 || nota > 10)) {
+                res.status(400).send({ error: 'Todas las notas deben ser números entre 1 y 10.' });
+                return;
+            }
+            alumnosProcesados.add(studentId);
+            normalizadas.push({ studentId, notas });
+        }
+        // Reutilizar los documentos existentes para no duplicar calificaciones.
+        const existentesSnap = await db.collection('calificaciones')
+            .where('materiaId', '==', materiaId)
+            .where('anio', '==', anioLectivo)
+            .where('trimestre', '==', trimestreNum)
+            .get();
+        const existentesPorAlumno = new Map();
+        existentesSnap.docs.forEach((doc) => {
+            const studentId = doc.data().studentId;
+            if (studentId && !existentesPorAlumno.has(studentId)) {
+                existentesPorAlumno.set(studentId, doc.ref);
+            }
+        });
+        const batch = db.batch();
+        for (const { studentId, notas } of normalizadas) {
+            const existente = existentesPorAlumno.get(studentId);
+            const docRef = existente || db.collection('calificaciones').doc();
+            batch.set(docRef, {
+                studentId,
+                materiaId,
+                materia: materiaData.nombre || '',
+                anio: anioLectivo,
+                trimestre: trimestreNum,
+                notas,
+                updatedAt: firestore_1.FieldValue.serverTimestamp(),
+                updatedBy: callerClaims.uid,
+                ...(existente ? {} : { createdAt: firestore_1.FieldValue.serverTimestamp() })
+            }, { merge: true });
+        }
+        await batch.commit();
+        res.status(200).send({
+            message: 'Calificaciones guardadas correctamente.',
+            saved: normalizadas.length,
+            materiaId,
+            trimestre: trimestreNum,
+            anio: anioLectivo
+        });
+    }
+    catch (error) {
+        console.error('Error en cf_saveGrades:', error);
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 19. cf_requestStudentPasswordReset
+ * Solicitud pública de recuperación de contraseña para un alumno.
+ * Verifica ID/DNI + correo del tutor, guarda el hash de un token temporal
+ * y envía el enlace de restablecimiento al correo del tutor.
+ */
+exports.cf_requestStudentPasswordReset = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const { identifier, emailPadre } = req.body || {};
+        if (!identifier || !emailPadre) {
+            res.status(400).send({ error: 'Ingresá tu ID institucional o DNI y el correo del tutor.' });
+            return;
+        }
+        const identifierLimpio = String(identifier).trim();
+        const emailLimpio = String(emailPadre).trim().toLowerCase();
+        const respuestaGenerica = {
+            message: 'Si los datos coinciden con un alumno registrado, enviaremos un enlace de recuperación al correo del tutor.'
+        };
+        let snapshot = await db.collection('students')
+            .where('studentID_login', '==', identifierLimpio)
+            .limit(1)
+            .get();
+        if (snapshot.empty) {
+            snapshot = await db.collection('students')
+                .where('dni', '==', identifierLimpio)
+                .limit(1)
+                .get();
+        }
+        if (snapshot.empty) {
+            res.status(200).send(respuestaGenerica);
+            return;
+        }
+        const studentDoc = snapshot.docs[0];
+        const studentData = studentDoc.data() || {};
+        if (String(studentData.emailPadre || '').toLowerCase() !== emailLimpio) {
+            res.status(200).send(respuestaGenerica);
+            return;
+        }
+        const ultimaSolicitud = studentData.passwordResetRequestedAt;
+        if (ultimaSolicitud && Date.now() - ultimaSolicitud.toMillis() < 60 * 1000) {
+            res.status(429).send({ error: 'Esperá un minuto antes de solicitar otro enlace de recuperación.' });
+            return;
+        }
+        // Invalidar tokens anteriores aún vigentes.
+        const anteriores = await db.collection('passwordResets')
+            .where('studentId', '==', studentDoc.id)
+            .get();
+        const batch = db.batch();
+        anteriores.docs.forEach((doc) => {
+            if (!doc.data().used) {
+                batch.update(doc.ref, { used: true, usedAt: firestore_1.FieldValue.serverTimestamp() });
+            }
+        });
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const tokenHash = sha256(resetToken);
+        batch.set(db.collection('passwordResets').doc(tokenHash), {
+            studentId: studentDoc.id,
+            used: false,
+            createdAt: firestore_1.FieldValue.serverTimestamp(),
+            expiresAt: firestore_1.Timestamp.fromMillis(Date.now() + PASSWORD_RESET_TTL_MS),
+            requestedIp: req.ip || null,
+        });
+        batch.update(studentDoc.ref, { passwordResetRequestedAt: firestore_1.FieldValue.serverTimestamp() });
+        await batch.commit();
+        const resetLink = `${APP_BASE_URL}/reset-password?token=${resetToken}&studentId=${studentDoc.id}`;
+        const htmlContent = `
+      <h1>Recuperación de contraseña - Educar para Transformar</h1>
+      <p>Hola,</p>
+      <p>Recibimos una solicitud para restablecer la contraseña del estudiante <strong>${studentData.nombre || ''}</strong> (usuario: ${studentData.studentID_login || ''}).</p>
+      <p>Para crear una nueva contraseña, ingresá al siguiente enlace:</p>
+      <p><a href="${resetLink}">Restablecer contraseña</a></p>
+      <p>El enlace es válido por 1 hora y puede usarse una sola vez.</p>
+      <p>Si no solicitaste este cambio, podés ignorar este correo.</p>
+    `;
+        await (0, email_1.sendEmail)({
+            to: studentData.emailPadre,
+            subject: `Recuperación de contraseña para ${studentData.nombre || 'Estudiante'} - Educar para Transformar`,
+            html: htmlContent,
+        });
+        res.status(200).send(respuestaGenerica);
+    }
+    catch (error) {
+        console.error('Error en cf_requestStudentPasswordReset:', error);
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 20. cf_confirmStudentPasswordReset
+ * Confirma la recuperación con el token enviado al tutor y define una nueva contraseña.
+ */
+exports.cf_confirmStudentPasswordReset = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const { studentId, token, newPassword } = req.body || {};
+        if (!studentId || !token || !newPassword) {
+            res.status(400).send({ error: 'Faltan parámetros requeridos (studentId, token, newPassword).' });
+            return;
+        }
+        if (typeof newPassword !== 'string' || newPassword.length < 6) {
+            res.status(400).send({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
+            return;
+        }
+        const studentIdStr = String(studentId);
+        const tokenHash = sha256(String(token));
+        const resetRef = db.collection('passwordResets').doc(tokenHash);
+        const resetDoc = await resetRef.get();
+        if (!resetDoc.exists) {
+            res.status(400).send({ error: 'El enlace de recuperación es inválido o ya fue utilizado.' });
+            return;
+        }
+        const resetData = resetDoc.data() || {};
+        if (resetData.studentId !== studentIdStr || resetData.used) {
+            res.status(400).send({ error: 'El enlace de recuperación es inválido o ya fue utilizado.' });
+            return;
+        }
+        const expiresAt = resetData.expiresAt;
+        if (!expiresAt || expiresAt.toMillis() < Date.now()) {
+            res.status(400).send({ error: 'El enlace de recuperación expiró. Solicitá uno nuevo.' });
+            return;
+        }
+        const studentRef = db.collection('students').doc(studentIdStr);
+        const studentDoc = await studentRef.get();
+        if (!studentDoc.exists) {
+            res.status(404).send({ error: 'Estudiante no encontrado.' });
+            return;
+        }
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+        const tokensSnap = await db.collection('passwordResets')
+            .where('studentId', '==', studentIdStr)
+            .get();
+        const batch = db.batch();
+        tokensSnap.docs.forEach((doc) => {
+            if (!doc.data().used) {
+                batch.update(doc.ref, { used: true, usedAt: firestore_1.FieldValue.serverTimestamp() });
+            }
+        });
+        batch.update(studentRef, {
+            hashedPassword,
+            mustChangePassword: false,
+            passwordResetRequestedAt: null,
+        });
+        await batch.commit();
+        res.status(200).send({ message: 'Contraseña restablecida con éxito. Ya podés iniciar sesión.' });
+    }
+    catch (error) {
+        console.error('Error en cf_confirmStudentPasswordReset:', error);
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 21. cf_getStudentAttendance
+ * Devuelve las asistencias del alumno autenticado y un resumen por estado.
+ * Un user_admin puede consultar a otro alumno con ?studentId=.
+ */
+exports.cf_getStudentAttendance = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'Estudiante' && callerClaims.role !== 'user_admin') {
+            res.status(403).send({ error: 'Permisos insuficientes.' });
+            return;
+        }
+        const studentUid = resolveStudentUid(callerClaims, req.query.studentId);
+        const studentDoc = await db.collection('students').doc(studentUid).get();
+        if (!studentDoc.exists) {
+            res.status(404).send({ error: 'Estudiante no encontrado.' });
+            return;
+        }
+        const studentData = studentDoc.data() || {};
+        const anioFiltro = req.query.anio ? Number(req.query.anio) : null;
+        if (anioFiltro != null && (!Number.isInteger(anioFiltro) || anioFiltro < 2000 || anioFiltro > 2100)) {
+            res.status(400).send({ error: 'El año lectivo es inválido.' });
+            return;
+        }
+        const snapshot = await db.collection('asistencias')
+            .where('studentId', '==', studentUid)
+            .get();
+        const resumen = {
+            total: 0,
+            presente: 0,
+            ausente: 0,
+            tarde: 0,
+            justificada: 0,
+            porcentajeAsistencia: 0,
+        };
+        const asistencias = snapshot.docs
+            .map((doc) => {
+            const data = doc.data() || {};
+            const fecha = data.fecha;
+            const fechaISO = data.fechaISO || (fecha ? fecha.toDate().toISOString().slice(0, 10) : null);
+            return {
+                id: doc.id,
+                materiaId: data.materiaId || '',
+                materia: data.materia || '',
+                fecha: fecha ? fecha.toDate().toISOString() : fechaISO,
+                fechaISO,
+                anio: Number(data.anio) || null,
+                estado: String(data.estado || '').toLowerCase(),
+                observacion: data.observacion || '',
+                registradoPor: data.registradoPor || null,
+                _orden: fecha ? fecha.toMillis() : (fechaISO ? Date.parse(fechaISO) : 0),
+            };
+        })
+            .filter((item) => !anioFiltro || item.anio === anioFiltro)
+            .sort((a, b) => b._orden - a._orden);
+        asistencias.forEach((item) => {
+            if (!ATTENDANCE_STATES.includes(item.estado))
+                return;
+            resumen.total += 1;
+            resumen[item.estado] += 1;
+        });
+        const computables = resumen.presente + resumen.tarde + resumen.justificada;
+        resumen.porcentajeAsistencia = resumen.total > 0
+            ? Math.round((computables / resumen.total) * 10000) / 100
+            : 0;
+        res.status(200).send({
+            alumno: {
+                uid: studentUid,
+                nombre: studentData.nombre || '',
+                nivel: studentData.nivel || '',
+                curso: studentData.curso || '',
+                division: studentData.division || '',
+            },
+            anio: anioFiltro,
+            resumen,
+            asistencias: asistencias.map(({ _orden, ...item }) => item),
+        });
+    }
+    catch (error) {
+        console.error('Error en cf_getStudentAttendance:', error);
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 22. cf_getStudentSchedule
+ * Devuelve el horario semanal del alumno según nivel/curso/división.
+ */
+exports.cf_getStudentSchedule = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'Estudiante' && callerClaims.role !== 'user_admin') {
+            res.status(403).send({ error: 'Permisos insuficientes.' });
+            return;
+        }
+        const studentUid = resolveStudentUid(callerClaims, req.query.studentId);
+        const studentDoc = await db.collection('students').doc(studentUid).get();
+        if (!studentDoc.exists) {
+            res.status(404).send({ error: 'Estudiante no encontrado.' });
+            return;
+        }
+        const studentData = studentDoc.data() || {};
+        if (!studentData.nivel) {
+            res.status(400).send({ error: 'El alumno no tiene un nivel educativo asignado.' });
+            return;
+        }
+        const anio = Number(req.query.anio) || new Date().getFullYear();
+        const snapshot = await db.collection('horarios')
+            .where('nivel', '==', studentData.nivel)
+            .get();
+        const horarios = snapshot.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .filter((item) => {
+            if (item.anio && Number(item.anio) !== anio)
+                return false;
+            if (studentData.curso && item.curso && item.curso !== studentData.curso)
+                return false;
+            if (studentData.division && item.division && item.division !== studentData.division)
+                return false;
+            return true;
+        })
+            .sort((a, b) => {
+            const diaA = Number(a.dia) || 0;
+            const diaB = Number(b.dia) || 0;
+            return diaA !== diaB
+                ? diaA - diaB
+                : String(a.horaInicio || '').localeCompare(String(b.horaInicio || ''));
+        })
+            .map((item) => ({
+            id: item.id,
+            dia: Number(item.dia) || 0,
+            horaInicio: item.horaInicio || '',
+            horaFin: item.horaFin || '',
+            materiaId: item.materiaId || '',
+            materia: item.materia || '',
+            docente: item.docente || '',
+            aula: item.aula || '',
+            curso: item.curso || '',
+            division: item.division || '',
+            anio: Number(item.anio) || null,
+        }));
+        res.status(200).send({
+            alumno: {
+                uid: studentUid,
+                nombre: studentData.nombre || '',
+                nivel: studentData.nivel || '',
+                curso: studentData.curso || '',
+                division: studentData.division || '',
+            },
+            anio,
+            horarios,
+        });
+    }
+    catch (error) {
+        console.error('Error en cf_getStudentSchedule:', error);
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 23. cf_getStudentMaterials
+ * Devuelve los materiales de las materias en las que está inscripto el alumno.
+ */
+exports.cf_getStudentMaterials = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'Estudiante' && callerClaims.role !== 'user_admin') {
+            res.status(403).send({ error: 'Permisos insuficientes.' });
+            return;
+        }
+        const studentUid = resolveStudentUid(callerClaims, req.query.studentId);
+        const studentDoc = await db.collection('students').doc(studentUid).get();
+        if (!studentDoc.exists) {
+            res.status(404).send({ error: 'Estudiante no encontrado.' });
+            return;
+        }
+        const studentData = studentDoc.data() || {};
+        const materiasSnap = await db.collection('materias')
+            .where('studentIds', 'array-contains', studentUid)
+            .get();
+        const materias = materiasSnap.docs.map((doc) => ({
+            id: doc.id,
+            nombre: (doc.data() || {}).nombre || '',
+        }));
+        const materiaIds = materias.map((materia) => materia.id);
+        const docs = [];
+        if (materiaIds.length > 0) {
+            for (let i = 0; i < materiaIds.length; i += 10) {
+                const chunk = materiaIds.slice(i, i + 10);
+                const snap = await db.collection('materiales')
+                    .where('materiaId', 'in', chunk)
+                    .get();
+                docs.push(...snap.docs);
+            }
+        }
+        else if (studentData.nivel) {
+            const snap = await db.collection('materiales')
+                .where('nivel', '==', studentData.nivel)
+                .get();
+            docs.push(...snap.docs);
+        }
+        const anioFiltro = req.query.anio ? Number(req.query.anio) : null;
+        const vistos = new Set();
+        const materiales = docs
+            .filter((doc) => {
+            if (vistos.has(doc.id))
+                return false;
+            vistos.add(doc.id);
+            const data = doc.data() || {};
+            if (anioFiltro && data.anio && Number(data.anio) !== anioFiltro)
+                return false;
+            return true;
+        })
+            .map((doc) => {
+            const data = doc.data() || {};
+            const createdAt = data.createdAt;
+            return {
+                id: doc.id,
+                materiaId: data.materiaId || '',
+                materia: data.materia || '',
+                nivel: data.nivel || '',
+                titulo: data.titulo || '',
+                descripcion: data.descripcion || '',
+                tipo: data.tipo || 'link',
+                url: data.url || '',
+                anio: Number(data.anio) || null,
+                createdAt: createdAt ? createdAt.toDate().toISOString() : null,
+                profesorNombre: data.profesorNombre || '',
+                _orden: createdAt ? createdAt.toMillis() : 0,
+            };
+        })
+            .sort((a, b) => {
+            if (b._orden !== a._orden)
+                return b._orden - a._orden;
+            return String(a.titulo).localeCompare(String(b.titulo));
+        })
+            .map(({ _orden, ...item }) => item);
+        res.status(200).send({
+            alumno: {
+                uid: studentUid,
+                nombre: studentData.nombre || '',
+                nivel: studentData.nivel || '',
+                curso: studentData.curso || '',
+                division: studentData.division || '',
+            },
+            materias,
+            materiales,
+        });
+    }
+    catch (error) {
+        console.error('Error en cf_getStudentMaterials:', error);
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 24. cf_saveAttendance
+ * Carga o actualiza asistencias de una materia y fecha. Staff solo en sus materias.
+ */
+exports.cf_saveAttendance = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'Staff' && callerClaims.role !== 'user_admin') {
+            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol Staff o user_admin.' });
+            return;
+        }
+        const { materiaId, fecha, records } = req.body || {};
+        if (!materiaId || !fecha || !Array.isArray(records) || records.length === 0) {
+            res.status(400).send({ error: 'Faltan parámetros requeridos (materiaId, fecha, records).' });
+            return;
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha))) {
+            res.status(400).send({ error: 'La fecha debe tener el formato YYYY-MM-DD.' });
+            return;
+        }
+        const fechaDate = new Date(`${fecha}T12:00:00.000Z`);
+        if (Number.isNaN(fechaDate.getTime()) || fechaDate.toISOString().slice(0, 10) !== fecha) {
+            res.status(400).send({ error: 'La fecha indicada no es válida.' });
+            return;
+        }
+        const materiaDoc = await db.collection('materias').doc(String(materiaId)).get();
+        if (!materiaDoc.exists) {
+            res.status(404).send({ error: 'La materia no existe.' });
+            return;
+        }
+        const materiaData = materiaDoc.data() || {};
+        if (callerClaims.role === 'Staff' && materiaData.profesorUid !== callerClaims.uid) {
+            res.status(403).send({ error: 'No tenés permiso para cargar asistencias en esta materia.' });
+            return;
+        }
+        const inscriptos = new Set(Array.isArray(materiaData.studentIds) ? materiaData.studentIds : []);
+        if (inscriptos.size === 0) {
+            res.status(400).send({ error: 'La materia no tiene alumnos inscriptos.' });
+            return;
+        }
+        const normalizados = [];
+        for (const record of records) {
+            const studentId = String(record?.studentId || '');
+            const estado = String(record?.estado || '').toLowerCase();
+            if (!studentId || !inscriptos.has(studentId)) {
+                res.status(400).send({ error: `El alumno ${studentId || 'desconocido'} no está inscripto en esta materia.` });
+                return;
+            }
+            if (!ATTENDANCE_STATES.includes(estado)) {
+                res.status(400).send({ error: `Estado inválido para ${studentId}. Debe ser presente, ausente, tarde o justificada.` });
+                return;
+            }
+            const observacion = String(record?.observacion || '').trim().slice(0, 200);
+            normalizados.push({ studentId, estado, observacion });
+        }
+        const batch = db.batch();
+        normalizados.forEach(({ studentId, estado, observacion }) => {
+            const ref = db.collection('asistencias').doc(`${materiaId}_${fecha}_${studentId}`);
+            batch.set(ref, {
+                studentId,
+                materiaId,
+                materia: materiaData.nombre || '',
+                fecha: firestore_1.Timestamp.fromDate(fechaDate),
+                fechaISO: fecha,
+                anio: fechaDate.getUTCFullYear(),
+                estado,
+                observacion,
+                registradoPor: callerClaims.uid,
+                updatedAt: firestore_1.FieldValue.serverTimestamp(),
+            }, { merge: true });
+        });
+        await batch.commit();
+        res.status(200).send({
+            message: 'Asistencias guardadas correctamente.',
+            saved: normalizados.length,
+            materiaId,
+            fecha,
+        });
+    }
+    catch (error) {
+        console.error('Error en cf_saveAttendance:', error);
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 25. cf_upsertMaterial
+ * Crea o actualiza un material de estudio. Staff solo en sus materias.
+ */
+exports.cf_upsertMaterial = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'Staff' && callerClaims.role !== 'user_admin') {
+            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol Staff o user_admin.' });
+            return;
+        }
+        const { id, materiaId, titulo, descripcion, tipo, url, anio } = req.body || {};
+        if (!materiaId || !titulo || !url) {
+            res.status(400).send({ error: 'Faltan parámetros requeridos (materiaId, titulo, url).' });
+            return;
+        }
+        const tipoFinal = String(tipo || 'link').toLowerCase();
+        if (!MATERIAL_TYPES.includes(tipoFinal)) {
+            res.status(400).send({ error: `Tipo inválido. Debe ser uno de: ${MATERIAL_TYPES.join(', ')}.` });
+            return;
+        }
+        const materiaDoc = await db.collection('materias').doc(String(materiaId)).get();
+        if (!materiaDoc.exists) {
+            res.status(404).send({ error: 'La materia no existe.' });
+            return;
+        }
+        const materiaData = materiaDoc.data() || {};
+        if (callerClaims.role === 'Staff' && materiaData.profesorUid !== callerClaims.uid) {
+            res.status(403).send({ error: 'No tenés permiso para publicar materiales en esta materia.' });
+            return;
+        }
+        const anioLectivo = Number(anio) || new Date().getFullYear();
+        if (!Number.isInteger(anioLectivo) || anioLectivo < 2000 || anioLectivo > 2100) {
+            res.status(400).send({ error: 'El año lectivo es inválido.' });
+            return;
+        }
+        const ref = id ? db.collection('materiales').doc(String(id)) : db.collection('materiales').doc();
+        const existente = id ? await ref.get() : null;
+        const esNuevo = !existente?.exists;
+        // Un docente no puede sobrescribir un material de otra materia.
+        if (existente?.exists && callerClaims.role === 'Staff') {
+            const materiaOriginalId = existente.data()?.materiaId;
+            const materiaOriginalDoc = materiaOriginalId
+                ? await db.collection('materias').doc(materiaOriginalId).get()
+                : null;
+            if (!materiaOriginalDoc?.exists || materiaOriginalDoc.data()?.profesorUid !== callerClaims.uid) {
+                res.status(403).send({ error: 'No tenés permiso para modificar este material.' });
+                return;
+            }
+        }
+        await ref.set({
+            materiaId,
+            materia: materiaData.nombre || '',
+            nivel: materiaData.nivel || '',
+            titulo: String(titulo).trim(),
+            descripcion: String(descripcion || '').trim(),
+            tipo: tipoFinal,
+            url: String(url).trim(),
+            anio: anioLectivo,
+            profesorNombre: materiaData.profesorNombre || '',
+            publicadoPor: callerClaims.uid,
+            updatedAt: firestore_1.FieldValue.serverTimestamp(),
+            ...(esNuevo ? { createdAt: firestore_1.FieldValue.serverTimestamp() } : {}),
+        }, { merge: true });
+        res.status(esNuevo ? 201 : 200).send({ id: ref.id, message: 'Material guardado correctamente.' });
+    }
+    catch (error) {
+        console.error('Error en cf_upsertMaterial:', error);
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 26. cf_deleteMaterial
+ * Elimina un material. Staff solo si pertenece a una materia a su cargo.
+ */
+exports.cf_deleteMaterial = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'Staff' && callerClaims.role !== 'user_admin') {
+            res.status(403).send({ error: 'Permisos insuficientes.' });
+            return;
+        }
+        const materialId = req.body?.materialId || req.query.materialId;
+        if (!materialId) {
+            res.status(400).send({ error: 'Falta el ID del material.' });
+            return;
+        }
+        const materialRef = db.collection('materiales').doc(String(materialId));
+        const materialDoc = await materialRef.get();
+        if (!materialDoc.exists) {
+            res.status(404).send({ error: 'El material no existe.' });
+            return;
+        }
+        if (callerClaims.role === 'Staff') {
+            const materiaId = materialDoc.data()?.materiaId;
+            const materiaDoc = materiaId ? await db.collection('materias').doc(materiaId).get() : null;
+            if (!materiaDoc?.exists || materiaDoc.data()?.profesorUid !== callerClaims.uid) {
+                res.status(403).send({ error: 'No tenés permiso para eliminar este material.' });
+                return;
+            }
+        }
+        await materialRef.delete();
+        res.status(200).send({ message: 'Material eliminado correctamente.' });
+    }
+    catch (error) {
+        console.error('Error en cf_deleteMaterial:', error);
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 27. cf_upsertSchedule
+ * Crea o actualiza un bloque horario institucional (solo user_admin).
+ */
+exports.cf_upsertSchedule = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'user_admin') {
+            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            return;
+        }
+        const { id, nivel, curso, division, dia, horaInicio, horaFin, materiaId, materiaNombre, docente, aula, anio, } = req.body || {};
+        if (!['inicial', 'primaria', 'secundaria'].includes(nivel)) {
+            res.status(400).send({ error: 'Nivel inválido. Debe ser inicial, primaria o secundaria.' });
+            return;
+        }
+        const diaNum = Number(dia);
+        if (!Number.isInteger(diaNum) || diaNum < 1 || diaNum > 6) {
+            res.status(400).send({ error: 'El día debe ser un número entre 1 (lunes) y 6 (sábado).' });
+            return;
+        }
+        if (!/^\d{2}:\d{2}$/.test(String(horaInicio)) || !/^\d{2}:\d{2}$/.test(String(horaFin))) {
+            res.status(400).send({ error: 'Las horas deben tener el formato HH:MM.' });
+            return;
+        }
+        if (String(horaInicio) >= String(horaFin)) {
+            res.status(400).send({ error: 'La hora de inicio debe ser anterior a la hora de fin.' });
+            return;
+        }
+        let nombreMateria = String(materiaNombre || '').trim();
+        let docenteFinal = String(docente || '').trim();
+        if (materiaId) {
+            const materiaDoc = await db.collection('materias').doc(String(materiaId)).get();
+            if (!materiaDoc.exists) {
+                res.status(404).send({ error: 'La materia no existe.' });
+                return;
+            }
+            const materiaData = materiaDoc.data() || {};
+            nombreMateria = nombreMateria || materiaData.nombre || '';
+            docenteFinal = docenteFinal || materiaData.profesorNombre || '';
+        }
+        if (!nombreMateria) {
+            res.status(400).send({ error: 'Indicá la materia o su ID.' });
+            return;
+        }
+        const anioLectivo = Number(anio) || new Date().getFullYear();
+        if (!Number.isInteger(anioLectivo) || anioLectivo < 2000 || anioLectivo > 2100) {
+            res.status(400).send({ error: 'El año lectivo es inválido.' });
+            return;
+        }
+        const esNuevo = !id;
+        const ref = id ? db.collection('horarios').doc(String(id)) : db.collection('horarios').doc();
+        await ref.set({
+            nivel,
+            curso: String(curso || '').trim(),
+            division: String(division || '').trim(),
+            dia: diaNum,
+            horaInicio: String(horaInicio),
+            horaFin: String(horaFin),
+            materiaId: materiaId || null,
+            materia: nombreMateria,
+            docente: docenteFinal,
+            aula: String(aula || '').trim(),
+            anio: anioLectivo,
+            updatedAt: firestore_1.FieldValue.serverTimestamp(),
+            ...(esNuevo ? { createdAt: firestore_1.FieldValue.serverTimestamp() } : {}),
+        }, { merge: true });
+        res.status(esNuevo ? 201 : 200).send({ id: ref.id, message: 'Horario guardado correctamente.' });
+    }
+    catch (error) {
+        console.error('Error en cf_upsertSchedule:', error);
+        sendFunctionError(res, error);
+    }
+});
+/**
+ * 28. cf_deleteSchedule
+ * Elimina un bloque horario (solo user_admin).
+ */
+exports.cf_deleteSchedule = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
+    try {
+        const callerClaims = await verifyAuth(req);
+        if (callerClaims.role !== 'user_admin') {
+            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            return;
+        }
+        const scheduleId = req.body?.scheduleId || req.query.scheduleId;
+        if (!scheduleId) {
+            res.status(400).send({ error: 'Falta el ID del horario.' });
+            return;
+        }
+        const ref = db.collection('horarios').doc(String(scheduleId));
+        const doc = await ref.get();
+        if (!doc.exists) {
+            res.status(404).send({ error: 'El bloque horario no existe.' });
+            return;
+        }
+        await ref.delete();
+        res.status(200).send({ message: 'Bloque horario eliminado correctamente.' });
+    }
+    catch (error) {
+        console.error('Error en cf_deleteSchedule:', error);
+        sendFunctionError(res, error);
     }
 });
 //# sourceMappingURL=index.js.map

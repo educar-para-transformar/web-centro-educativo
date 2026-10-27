@@ -4,6 +4,7 @@ import Icon from '../components/atoms/Icon';
 import SuccessModal from '../components/molecules/SuccessModal';
 import GalleryHero from '../components/organisms/GalleryHero';
 import GalleryGrid from '../components/organisms/GalleryGrid';
+import useFormState from '../hooks/useFormState';
 import { images } from '../services/imagesConfig';
 
 // Carousel Image Data
@@ -23,15 +24,22 @@ const carouselImages = [
 const Gallery = () => {
   // Modal state for booking a visit
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({
+  const {
+    formData,
+    setFormData,
+    errors,
+    setErrors,
+    isSubmitting,
+    setIsSubmitting,
+    submitSuccess,
+    setSubmitSuccess,
+    handleInputChange,
+  } = useFormState({
     name: '',
     email: '',
     date: '',
     level: '',
   });
-  const [errors, setErrors] = useState({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitSuccess, setSubmitSuccess] = useState(false);
 
   // Carousel Lightbox State
   const [isCarouselOpen, setIsCarouselOpen] = useState(false);
@@ -88,19 +96,6 @@ const Gallery = () => {
   const handleOpenCarousel = (index) => {
     setCarouselIndex(index);
     setIsCarouselOpen(true);
-  };
-
-  // Form input changes
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    if (errors[name]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[name];
-        return newErrors;
-      });
-    }
   };
 
   // Submit visit booking

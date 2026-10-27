@@ -46,7 +46,7 @@ const Registration = () => {
   const [errores, setErrores] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const siguientePaso = () => {
+  const siguientePasoRegistracion = () => {
     if (validarPaso()) setPasoActual(pasoActual + 1);
   };
 
@@ -317,7 +317,7 @@ const Registration = () => {
               </button>
             )}
             {pasoActual < 3 ? (
-              <button type="button" className="btn-siguiente" onClick={siguientePaso}>
+              <button type="button" className="btn-siguiente" onClick={siguientePasoRegistracion}>
                 Siguiente Paso →
               </button>
             ) : (

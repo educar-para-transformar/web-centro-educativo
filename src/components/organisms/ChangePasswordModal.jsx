@@ -11,8 +11,8 @@ const ChangePasswordModal = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  // Solamente mostrar el modal si el usuario está autenticado y tiene pendiente el cambio de contraseña
-  if (!user || !user.mustChangePassword) {
+  // Mostrar el modal mientras el cambio esté pendiente o mientras se muestra el éxito.
+  if (!user || (!user.mustChangePassword && !success)) {
     return null;
   }
 
