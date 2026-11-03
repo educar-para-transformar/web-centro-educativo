@@ -176,6 +176,14 @@ const DesktopLinks = () => {
       >
         Empleo
       </NavLink>
+      <NavLink
+        to="/tp4"
+        className={({ isActive }) =>
+          isActive ? 'nav-link active' : 'nav-link'
+        }
+      >
+        Unidad 4
+      </NavLink>
     </div>
   );
 };
@@ -183,7 +191,14 @@ const DesktopLinks = () => {
 /**
  * Subcomponent to render the user profile navigation dropdown menu on desktop.
  */
-const UserMenu = ({ logout, displayName, navigate, isAdmin, isStudent, isTeacher }) => {
+const UserMenu = ({
+  logout,
+  displayName,
+  navigate,
+  isAdmin,
+  isStudent,
+  isTeacher,
+}) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
 
@@ -319,7 +334,7 @@ const MobileDrawer = ({
   navigate,
   isAdmin,
   isStudent,
-  isTeacher
+  isTeacher,
 }) => {
   return (
     <div className={`navbar-mobile-drawer ${isOpen ? 'open' : ''}`}>
@@ -419,15 +434,25 @@ const MobileDrawer = ({
           <span className="material-symbols-outlined">work</span>
           Empleo
         </NavLink>
+        <NavLink
+          to="/tp4"
+          onClick={onClose}
+          className={({ isActive }) =>
+            isActive ? 'mobile-nav-link active' : 'mobile-nav-link'
+          }
+        >
+          <span className="material-symbols-outlined">
+            integration_instructions
+          </span>
+          Unidad 4
+        </NavLink>
       </div>
 
       <div className="mobile-drawer-actions">
         {isLoggedIn && user ? (
           <div className="mobile-user-info">
             <div className="mobile-user-profile">
-              <span className="material-symbols-outlined">
-                account_circle
-              </span>
+              <span className="material-symbols-outlined">account_circle</span>
               <div className="mobile-user-details">
                 <span className="mobile-user-welcome">Hola,</span>
                 <span className="mobile-user-name">{displayName}</span>
@@ -442,7 +467,9 @@ const MobileDrawer = ({
                 }}
                 className="mobile-action-btn profile-btn"
               >
-                <span className="material-symbols-outlined text-lg">person</span>
+                <span className="material-symbols-outlined text-lg">
+                  person
+                </span>
                 Ver Perfil
               </button>
               {isAdmin && (
@@ -454,7 +481,9 @@ const MobileDrawer = ({
                   }}
                   className="mobile-action-btn profile-btn"
                 >
-                  <span className="material-symbols-outlined text-lg">admin_panel_settings</span>
+                  <span className="material-symbols-outlined text-lg">
+                    admin_panel_settings
+                  </span>
                   Panel de usuarios
                 </button>
               )}
@@ -467,7 +496,9 @@ const MobileDrawer = ({
                   }}
                   className="mobile-action-btn profile-btn"
                 >
-                  <span className="material-symbols-outlined text-lg">school</span>
+                  <span className="material-symbols-outlined text-lg">
+                    school
+                  </span>
                   Mi boletín
                 </button>
               )}
@@ -480,7 +511,9 @@ const MobileDrawer = ({
                   }}
                   className="mobile-action-btn profile-btn"
                 >
-                  <span className="material-symbols-outlined text-lg">menu_book</span>
+                  <span className="material-symbols-outlined text-lg">
+                    menu_book
+                  </span>
                   Mis materias
                 </button>
               )}
@@ -493,7 +526,9 @@ const MobileDrawer = ({
                 }}
                 className="mobile-action-btn logout-btn"
               >
-                <span className="material-symbols-outlined text-lg">logout</span>
+                <span className="material-symbols-outlined text-lg">
+                  logout
+                </span>
                 Cerrar Sesión
               </button>
             </div>

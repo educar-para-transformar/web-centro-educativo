@@ -18,6 +18,7 @@ import Wellness from './pages/Wellness';
 import Privacy from './pages/Privacy';
 import StudentPanel from './pages/StudentPanel';
 import TeacherPanel from './pages/TeacherPanel';
+import Tp4 from './pages/Tp4';
 
 function App() {
   return (
@@ -38,6 +39,7 @@ function App() {
         <Route path="/admin" element={<AdminPanel />} />
         <Route path="/panel-alumno" element={<StudentPanel />} />
         <Route path="/panel-docente" element={<TeacherPanel />} />
+        <Route path="/tp4" element={<Tp4 />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
