@@ -50,7 +50,48 @@ Cuando la rama `develop` sea estable y esté lista para la entrega oficial:
 * Estilos: CSS Modules
 * Despliegue: Vercel
 * Control de Versiones: Git / GitHub
-* Calidad de Código: Husky + Prettier + ESLint
+* Calidad de Código: Husky + Prettier + ESLint + Vitest + SonarQube
+
+---
+
+## 🔄 Optimización del Ciclo de Desarrollo (Unidad 4)
+
+* **Tipo aplicado:** Integración Continua (CI) con Entrega/Despliegue Continuo (CD) dentro de un flujo Git Flow.
+* **Justificación:** permite integrar cambios pequeños y frecuentes, validar automáticamente el lint y el build en cada Pull Request, detectar errores antes del merge y mantener la rama principal siempre desplegable.
+* **Herramientas:** Git/GitHub, GitHub Actions, React Doctor, Husky, ESLint, Vitest, Testing Library, SonarQube, Vite, Vercel y Firebase (Auth, Firestore y Cloud Functions).
+* **Estado actual:** el workflow de CI ejecuta `npm ci`, `npm run lint`, `npm run test:coverage` y `npm run build`; Husky ejecuta Prettier (mediante `lint-staged`) y ESLint antes de cada commit; SonarQube analiza el código con el reporte de cobertura; Vercel genera previews desde `develop` y publica producción desde `master`.
+* **Mejoras propuestas:** análisis de seguridad y gestión de artefactos.
+
+La respuesta completa de la actividad se muestra en la aplicación en la ruta `/tp4`.
+
+### 🧪 Pruebas automatizadas
+
+El proyecto usa Vitest, React Testing Library y jsdom. Los tests se encuentran junto a los componentes y hooks (`*.test.jsx`).
+
+```bash
+npm test              # ejecuta todas las pruebas
+npm run test:watch    # modo interactivo
+npm run test:coverage # genera coverage/lcov.info
+```
+
+### 🔎 SonarQube
+
+La configuración del proyecto está en `sonar-project.properties`. El análisis se ejecuta en CI cuando están definidos los secretos `SONAR_TOKEN` y `SONAR_HOST_URL`; para SonarCloud también se debe definir `SONAR_ORGANIZATION`.
+
+Para levantar SonarQube localmente:
+
+```bash
+docker compose -f docker-compose.sonarqube.yml up -d
+```
+
+Luego, en http://localhost:9000, creá el proyecto y un token. Después ejecutá:
+
+```powershell
+$env:SONAR_HOST_URL="http://localhost:9000"
+$env:SONAR_TOKEN="<token-generado>"
+npm run test:coverage
+npm run sonar
+```
 
 ---
 
