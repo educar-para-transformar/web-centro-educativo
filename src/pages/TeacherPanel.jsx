@@ -25,7 +25,11 @@ const calcularPromedio = (notas) => {
     .filter((nota) => Number.isFinite(nota) && nota >= 1 && nota <= 10);
 
   if (validas.length === 0) return 0;
-  return Math.round((validas.reduce((acc, nota) => acc + nota, 0) / validas.length) * 100) / 100;
+  return (
+    Math.round(
+      (validas.reduce((acc, nota) => acc + nota, 0) / validas.length) * 100
+    ) / 100
+  );
 };
 
 const colorPromedio = (promedio) => {
@@ -144,7 +148,9 @@ const TeacherPanel = () => {
   }, [fetchPanel]);
 
   const selectedMateria = useMemo(
-    () => panel?.materias.find((materia) => materia.id === selectedMateriaId) || null,
+    () =>
+      panel?.materias.find((materia) => materia.id === selectedMateriaId) ||
+      null,
     [panel, selectedMateriaId]
   );
 
@@ -158,7 +164,8 @@ const TeacherPanel = () => {
     const nextDraft = {};
     selectedMateria.alumnos.forEach((alumno) => {
       const calificacion = selectedMateria.calificaciones.find(
-        (item) => item.studentId === alumno.id && item.trimestre === selectedTrimestre
+        (item) =>
+          item.studentId === alumno.id && item.trimestre === selectedTrimestre
       );
       const notas = calificacion?.notas?.map((nota) => String(nota)) || [];
       nextDraft[alumno.id] = notas.length > 0 ? notas : ['', ''];
@@ -182,7 +189,9 @@ const TeacherPanel = () => {
   const handleNotaChange = (studentId, index, value) => {
     setDraft((prev) => ({
       ...prev,
-      [studentId]: (prev[studentId] || []).map((nota, i) => (i === index ? value : nota)),
+      [studentId]: (prev[studentId] || []).map((nota, i) =>
+        i === index ? value : nota
+      ),
     }));
   };
 
@@ -213,8 +222,12 @@ const TeacherPanel = () => {
         .filter(Boolean)
         .map((nota) => Number(nota));
 
-      if (notas.some((nota) => !Number.isFinite(nota) || nota < 1 || nota > 10)) {
-        setSaveError(`Revisá las notas de ${alumno.nombre}: deben ser números entre 1 y 10.`);
+      if (
+        notas.some((nota) => !Number.isFinite(nota) || nota < 1 || nota > 10)
+      ) {
+        setSaveError(
+          `Revisá las notas de ${alumno.nombre}: deben ser números entre 1 y 10.`
+        );
         return;
       }
 
@@ -240,7 +253,9 @@ const TeacherPanel = () => {
 
       if (!response.ok) {
         const errData = await response.json();
-        throw new Error(errData.error || 'No se pudieron guardar las calificaciones.');
+        throw new Error(
+          errData.error || 'No se pudieron guardar las calificaciones.'
+        );
       }
 
       const data = await response.json();
@@ -342,10 +357,16 @@ const TeacherPanel = () => {
         {/* Sin materias asignadas */}
         {!isLoading && !error && materias.length === 0 && (
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-16 text-center">
-            <Icon name="menu_book" className="text-6xl text-slate-300 mx-auto mb-4" />
-            <p className="font-bold text-lg text-slate-700">No tenés materias asignadas</p>
+            <Icon
+              name="menu_book"
+              className="text-6xl text-slate-300 mx-auto mb-4"
+            />
+            <p className="font-bold text-lg text-slate-700">
+              No tenés materias asignadas
+            </p>
             <p className="text-sm text-slate-500 mt-1">
-              Cuando un administrador te asigne materias, aparecerán en este panel.
+              Cuando un administrador te asigne materias, aparecerán en este
+              panel.
             </p>
           </div>
         )}
@@ -360,16 +381,28 @@ const TeacherPanel = () => {
               </div>
               <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Docente</p>
-                  <p className="font-bold text-slate-800 truncate">{panel?.docente?.nombre || 'Sin nombre'}</p>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Docente
+                  </p>
+                  <p className="font-bold text-slate-800 truncate">
+                    {panel?.docente?.nombre || 'Sin nombre'}
+                  </p>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Correo</p>
-                  <p className="text-sm text-slate-700 truncate">{panel?.docente?.email || '—'}</p>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Correo
+                  </p>
+                  <p className="text-sm text-slate-700 truncate">
+                    {panel?.docente?.email || '—'}
+                  </p>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Año Lectivo</p>
-                  <p className="font-semibold text-slate-700">{panel?.anio || '—'}</p>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Año Lectivo
+                  </p>
+                  <p className="font-semibold text-slate-700">
+                    {panel?.anio || '—'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -379,7 +412,9 @@ const TeacherPanel = () => {
               <section className="lg:col-span-1 bg-white rounded-3xl border border-slate-100 shadow-sm p-5 h-fit">
                 <div className="flex items-center gap-2 mb-4 px-1">
                   <Icon name="menu_book" className="text-orange-500 text-xl" />
-                  <h2 className="font-headline font-bold text-lg text-slate-800">Mis materias</h2>
+                  <h2 className="font-headline font-bold text-lg text-slate-800">
+                    Mis materias
+                  </h2>
                 </div>
 
                 <div className="space-y-2">
@@ -389,6 +424,7 @@ const TeacherPanel = () => {
                       <button
                         key={materia.id}
                         type="button"
+                        data-testid={`materia-${materia.id}`}
                         onClick={() => handleSelectMateria(materia.id)}
                         className={`w-full text-left p-4 rounded-2xl border-2 transition-all cursor-pointer bg-transparent ${
                           activa
@@ -398,7 +434,9 @@ const TeacherPanel = () => {
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <p className={`font-bold truncate ${activa ? 'text-orange-700' : 'text-slate-800'}`}>
+                            <p
+                              className={`font-bold truncate ${activa ? 'text-orange-700' : 'text-slate-800'}`}
+                            >
                               {materia.nombre}
                             </p>
                             <p className="text-xs text-slate-500 mt-0.5">
@@ -406,7 +444,8 @@ const TeacherPanel = () => {
                             </p>
                           </div>
                           <span className="shrink-0 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wide">
-                            {materia.alumnos.length} alumno{materia.alumnos.length === 1 ? '' : 's'}
+                            {materia.alumnos.length} alumno
+                            {materia.alumnos.length === 1 ? '' : 's'}
                           </span>
                         </div>
                       </button>
@@ -425,7 +464,8 @@ const TeacherPanel = () => {
                           {selectedMateria.nombre}
                         </h2>
                         <p className="text-sm text-slate-500 mt-0.5">
-                          {NIVELES_LABEL[selectedMateria.nivel] || selectedMateria.nivel}
+                          {NIVELES_LABEL[selectedMateria.nivel] ||
+                            selectedMateria.nivel}
                         </p>
                       </div>
 
@@ -434,6 +474,7 @@ const TeacherPanel = () => {
                           <button
                             key={trimestre}
                             type="button"
+                            data-testid={`trimestre-${trimestre}`}
                             onClick={() => handleSelectTrimestre(trimestre)}
                             aria-pressed={selectedTrimestre === trimestre}
                             className={`px-3 sm:px-4 py-2 rounded-lg font-label font-bold text-xs transition-all cursor-pointer border-none whitespace-nowrap ${
@@ -450,10 +491,16 @@ const TeacherPanel = () => {
 
                     {alumnos.length === 0 ? (
                       <div className="p-16 text-center text-slate-500">
-                        <Icon name="groups" className="text-5xl text-slate-300 mb-4" />
-                        <p className="font-bold text-lg">No hay alumnos inscriptos</p>
+                        <Icon
+                          name="groups"
+                          className="text-5xl text-slate-300 mb-4"
+                        />
+                        <p className="font-bold text-lg">
+                          No hay alumnos inscriptos
+                        </p>
                         <p className="text-sm mt-1">
-                          El administrador debe inscribir alumnos en esta materia.
+                          El administrador debe inscribir alumnos en esta
+                          materia.
                         </p>
                       </div>
                     ) : (
@@ -464,7 +511,9 @@ const TeacherPanel = () => {
                             <thead>
                               <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-400 font-label font-bold text-xs uppercase tracking-wider">
                                 <th className="py-3.5 px-6">Alumno</th>
-                                <th className="py-3.5 px-4">ID Institucional</th>
+                                <th className="py-3.5 px-4">
+                                  ID Institucional
+                                </th>
                                 <th className="py-3.5 px-4">Notas</th>
                                 <th className="py-3.5 px-4">Promedio</th>
                               </tr>
@@ -475,8 +524,14 @@ const TeacherPanel = () => {
                                 const promedio = calcularPromedio(notas);
 
                                 return (
-                                  <tr key={alumno.id} className="hover:bg-slate-50/50 transition-colors">
-                                    <td className="py-4 px-6 font-bold text-slate-800">{alumno.nombre}</td>
+                                  <tr
+                                    key={alumno.id}
+                                    data-testid={`alumno-${alumno.id}`}
+                                    className="hover:bg-slate-50/50 transition-colors"
+                                  >
+                                    <td className="py-4 px-6 font-bold text-slate-800">
+                                      {alumno.nombre}
+                                    </td>
                                     <td className="py-4 px-4 font-mono text-xs text-slate-500">
                                       {alumno.studentID_login || '—'}
                                     </td>
@@ -484,14 +539,26 @@ const TeacherPanel = () => {
                                       <NotasEditor
                                         alumno={alumno}
                                         notas={notas}
-                                        onChange={(index, value) => handleNotaChange(alumno.id, index, value)}
+                                        onChange={(index, value) =>
+                                          handleNotaChange(
+                                            alumno.id,
+                                            index,
+                                            value
+                                          )
+                                        }
                                         onAdd={() => handleAddNota(alumno.id)}
-                                        onRemove={(index) => handleRemoveNota(alumno.id, index)}
+                                        onRemove={(index) =>
+                                          handleRemoveNota(alumno.id, index)
+                                        }
                                       />
                                     </td>
                                     <td className="py-4 px-4">
-                                      <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${colorPromedio(promedio)}`}>
-                                        {promedio > 0 ? promedio.toFixed(2) : '—'}
+                                      <span
+                                        className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${colorPromedio(promedio)}`}
+                                      >
+                                        {promedio > 0
+                                          ? promedio.toFixed(2)
+                                          : '—'}
                                       </span>
                                     </td>
                                   </tr>
@@ -511,12 +578,16 @@ const TeacherPanel = () => {
                               <div key={alumno.id} className="p-5 space-y-3">
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0">
-                                    <p className="font-bold text-slate-800 leading-tight">{alumno.nombre}</p>
+                                    <p className="font-bold text-slate-800 leading-tight">
+                                      {alumno.nombre}
+                                    </p>
                                     <p className="font-mono text-[11px] text-slate-500 mt-0.5">
                                       {alumno.studentID_login || '—'}
                                     </p>
                                   </div>
-                                  <span className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold ${colorPromedio(promedio)}`}>
+                                  <span
+                                    className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold ${colorPromedio(promedio)}`}
+                                  >
                                     {promedio > 0 ? promedio.toFixed(2) : '—'}
                                   </span>
                                 </div>
@@ -524,9 +595,13 @@ const TeacherPanel = () => {
                                 <NotasEditor
                                   alumno={alumno}
                                   notas={notas}
-                                  onChange={(index, value) => handleNotaChange(alumno.id, index, value)}
+                                  onChange={(index, value) =>
+                                    handleNotaChange(alumno.id, index, value)
+                                  }
                                   onAdd={() => handleAddNota(alumno.id)}
-                                  onRemove={(index) => handleRemoveNota(alumno.id, index)}
+                                  onRemove={(index) =>
+                                    handleRemoveNota(alumno.id, index)
+                                  }
                                 />
                               </div>
                             );
@@ -537,10 +612,14 @@ const TeacherPanel = () => {
                         <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                           <div className="min-w-0">
                             <p className="text-xs text-slate-500">
-                              Las notas se guardan para el Trimestre {selectedTrimestre} de {panel?.anio}.
+                              Las notas se guardan para el Trimestre{' '}
+                              {selectedTrimestre} de {panel?.anio}.
                             </p>
                             {saveMessage && (
-                              <p className="text-sm text-green-700 font-bold mt-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
+                              <p
+                                data-testid="save-message"
+                                className="text-sm text-green-700 font-bold mt-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2"
+                              >
                                 {saveMessage}
                               </p>
                             )}
@@ -553,11 +632,15 @@ const TeacherPanel = () => {
 
                           <button
                             type="button"
+                            data-testid="guardar-notas"
                             onClick={handleSaveGrades}
                             disabled={isSaving}
                             className="shrink-0 inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-orange-600 hover:bg-orange-700 text-white font-bold font-label text-sm rounded-full shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed"
                           >
-                            <Icon name={isSaving ? 'hourglass_top' : 'save'} className="text-base" />
+                            <Icon
+                              name={isSaving ? 'hourglass_top' : 'save'}
+                              className="text-base"
+                            />
                             {isSaving ? 'Guardando...' : 'Guardar notas'}
                           </button>
                         </div>

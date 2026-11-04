@@ -42,6 +42,35 @@ jobs:
           path: coverage
           retention-days: 7
 
+  e2e:
+    name: E2E (Cypress)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm --prefix functions ci
+
+      - name: Run Cypress E2E
+        uses: cypress-io/github-action@v7
+        with:
+          install: false
+          start: bash scripts/start-e2e-env.sh
+          wait-on: 'http://127.0.0.1:5173'
+          wait-on-timeout: 300
+
   sonarqube:
     name: SonarQube
     runs-on: ubuntu-latest

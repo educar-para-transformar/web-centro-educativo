@@ -31,3 +31,8 @@ serviceAccountKey.json
 
 # Firebase compiled functions
 functions/lib/
+
+# Cypress artifacts
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
