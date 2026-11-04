@@ -50,7 +50,7 @@ Cuando la rama `develop` sea estable y esté lista para la entrega oficial:
 * Estilos: CSS Modules
 * Despliegue: Vercel
 * Control de Versiones: Git / GitHub
-* Calidad de Código: Husky + Prettier + ESLint + Vitest + SonarQube
+* Calidad de Código: Husky + Prettier + ESLint + Vitest + Cypress + SonarQube
 
 ---
 
@@ -58,7 +58,7 @@ Cuando la rama `develop` sea estable y esté lista para la entrega oficial:
 
 * **Tipo aplicado:** Integración Continua (CI) con Entrega/Despliegue Continuo (CD) dentro de un flujo Git Flow.
 * **Justificación:** permite integrar cambios pequeños y frecuentes, validar automáticamente el lint y el build en cada Pull Request, detectar errores antes del merge y mantener la rama principal siempre desplegable.
-* **Herramientas:** Git/GitHub, GitHub Actions, React Doctor, Husky, ESLint, Vitest, Testing Library, SonarQube, Vite, Vercel y Firebase (Auth, Firestore y Cloud Functions).
+* **Herramientas:** Git/GitHub, GitHub Actions, React Doctor, Husky, ESLint, Vitest, Testing Library, Cypress, SonarQube, Vite, Vercel y Firebase (Auth, Firestore y Cloud Functions).
 * **Estado actual:** el workflow de CI ejecuta `npm ci`, `npm run lint`, `npm run test:coverage` y `npm run build`; Husky ejecuta Prettier (mediante `lint-staged`) y ESLint antes de cada commit; SonarQube analiza el código con el reporte de cobertura; Vercel genera previews desde `develop` y publica producción desde `master`.
 * **Mejoras propuestas:** análisis de seguridad y gestión de artefactos.
 
@@ -66,13 +66,52 @@ La respuesta completa de la actividad se muestra en la aplicación en la ruta `/
 
 ### 🧪 Pruebas automatizadas
 
-El proyecto usa Vitest, React Testing Library y jsdom. Los tests se encuentran junto a los componentes y hooks (`*.test.jsx`).
+El proyecto usa dos capas de pruebas:
+
+* **Unitarias / integración de componentes:** Vitest, React Testing Library y jsdom. Los tests se encuentran junto a los componentes y hooks (`*.test.jsx`).
+* **E2E / regresión:** Cypress sobre la aplicación real con emuladores de Firebase.
 
 ```bash
+# Pruebas unitarias
 npm test              # ejecuta todas las pruebas
 npm run test:watch    # modo interactivo
 npm run test:coverage # genera coverage/lcov.info
+
+# Pruebas E2E (requieren emuladores + seed + frontend levantados)
+npm run test:e2e        # ejecuta toda la suite de Cypress
+npm run test:e2e:open   # abre el runner interactivo de Cypress
+npm run test:regression # ejecuta solo cypress/e2e/regression/**/*.cy.js
 ```
+
+#### Casos E2E implementados
+
+| Caso | Archivo | Qué valida |
+|---|---|---|
+| CP-DOC-001 | `cypress/e2e/docente-notas.cy.js` | El docente carga notas, se persisten al recargar y la alumna las ve en su boletín. |
+| CP-REG-001 | `cypress/e2e/regression/regresion.cy.js` | Guardar dos veces no duplica registros y actualiza el boletín. |
+| CP-REG-002 | `cypress/e2e/regression/regresion.cy.js` | El admin crea una materia y la asigna a un docente. |
+| CP-REG-003 | `cypress/e2e/regression/regresion.cy.js` | El docente ve únicamente sus materias asignadas. |
+| CP-REG-004 | `cypress/e2e/regression/regresion.cy.js` | El alumno ve sus notas y promedios. |
+| CP-REG-005 | `cypress/e2e/regression/regresion.cy.js` | Guardar en una materia no asignada responde 403. |
+
+#### Entorno para Cypress
+
+Antes de ejecutar Cypress se necesitan los emuladores, el seed y Vite (ver sección siguiente):
+
+```bash
+# Terminal 1
+npm run emulators
+# Terminal 2
+npm run seed:emulators
+# Terminal 3
+npm run dev
+# Terminal 4
+npm run test:e2e
+```
+
+La configuración está en `cypress.config.js` y los comandos reutilizables en `cypress/support/commands.js`. Los artefactos (`videos/`, `screenshots/`) se ignoran en git.
+
+En CI, el job `e2e` de GitHub Actions levanta automáticamente emuladores, seed y Vite mediante `scripts/start-e2e-env.sh` antes de ejecutar Cypress.
 
 ### 🔎 SonarQube
 
