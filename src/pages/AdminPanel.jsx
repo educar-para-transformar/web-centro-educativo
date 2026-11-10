@@ -15,7 +15,7 @@ const MATERIAS_POR_NIVEL = {
     'Matemática Inicial',
     'Mundo Natural y Social',
     'Música',
-    'Educación Física'
+    'Educación Física',
   ],
   primaria: [
     'Matemática',
@@ -23,7 +23,7 @@ const MATERIAS_POR_NIVEL = {
     'Ciencias Naturales',
     'Ciencias Sociales',
     'Inglés',
-    'Educación Física'
+    'Educación Física',
   ],
   secundaria: [
     'Matemática',
@@ -34,8 +34,8 @@ const MATERIAS_POR_NIVEL = {
     'Química',
     'Biología',
     'Inglés',
-    'Educación Física'
-  ]
+    'Educación Física',
+  ],
 };
 
 const AdminPanel = () => {
@@ -50,7 +50,13 @@ const AdminPanel = () => {
   const [parentEmail, setParentEmail] = useState('');
   const [parentDni, setParentDni] = useState('');
   const [students, setStudents] = useState([
-    { nombre: '', dni: '', fechaNacimiento: '', nivel: 'inicial', genero: 'Masculino' }
+    {
+      nombre: '',
+      dni: '',
+      fechaNacimiento: '',
+      nivel: 'inicial',
+      genero: 'Masculino',
+    },
   ]);
 
   // Form State for creating Administrative/Staff User
@@ -66,7 +72,10 @@ const AdminPanel = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successModalOpen, setSuccessModalOpen] = useState(false);
-  const [successModalData, setSuccessModalData] = useState({ title: '', message: '' });
+  const [successModalData, setSuccessModalData] = useState({
+    title: '',
+    message: '',
+  });
   const [formError, setFormError] = useState('');
 
   // Auto-switch tab if user is not admin
@@ -94,7 +103,11 @@ const AdminPanel = () => {
 
   // Edición de materia y gestión de alumnos inscriptos
   const [editingMateria, setEditingMateria] = useState(null);
-  const [materiaEditForm, setMateriaEditForm] = useState({ nombre: '', nivel: 'inicial', profesorUid: '' });
+  const [materiaEditForm, setMateriaEditForm] = useState({
+    nombre: '',
+    nivel: 'inicial',
+    profesorUid: '',
+  });
   const [isEditingMateria, setIsEditingMateria] = useState(false);
   const [materiaEditError, setMateriaEditError] = useState('');
   const [managingMateriaStudents, setManagingMateriaStudents] = useState(null);
@@ -112,7 +125,7 @@ const AdminPanel = () => {
       // 1. Check local mock/real context
       const savedUser = localStorage.getItem('school_user');
       const currentUser = savedUser ? JSON.parse(savedUser) : null;
-      
+
       if (currentUser && currentUser.role === 'user_admin') {
         return;
       }
@@ -128,7 +141,9 @@ const AdminPanel = () => {
       }
 
       // If not allowed, redirect to login
-      console.warn("Acceso denegado al Panel de Administración. Requiere rol user_admin.");
+      console.warn(
+        'Acceso denegado al Panel de Administración. Requiere rol user_admin.'
+      );
       navigate('/login');
     };
     checkAdminAuth();
@@ -144,14 +159,25 @@ const AdminPanel = () => {
       const studentsSnap = await getDocs(collection(db, 'students'));
       const materiasSnap = await getDocs(collection(db, 'materias'));
 
-      const parents = parentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const students = studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const materias = materiasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const parents = parentsSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      const students = studentsSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      const materias = materiasSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
 
       // Cupo de inscriptos: alumnos asignados (studentIds) en cada materia
       const cupoCount = {};
-      materias.forEach(materia => {
-        cupoCount[materia.id] = Array.isArray(materia.studentIds) ? materia.studentIds.length : 0;
+      materias.forEach((materia) => {
+        cupoCount[materia.id] = Array.isArray(materia.studentIds)
+          ? materia.studentIds.length
+          : 0;
       });
 
       setParentsList(parents);
@@ -159,27 +185,109 @@ const AdminPanel = () => {
       setMateriasList(materias);
       setCupoPorMateria(cupoCount);
     } catch (err) {
-      console.error("Error cargando datos de Firestore:", err);
-      setDataError("No se pudieron cargar datos reales de Firestore. Mostrando datos simulados.");
-      
+      console.error('Error cargando datos de Firestore:', err);
+      setDataError(
+        'No se pudieron cargar datos reales de Firestore. Mostrando datos simulados.'
+      );
+
       // Fallback a datos simulados premium para visualización en local
       setParentsList([
-        { id: 'parent-1', nombre: 'Eduardo Gómez', email: 'eduardo@ejemplo.com', emailInvalid: false, studentIds: ['student-1', 'student-2'] },
-        { id: 'parent-2', nombre: 'María Rodríguez', email: 'maria.invalid@gmail.com', emailInvalid: true, studentIds: ['student-3'] }
+        {
+          id: 'parent-1',
+          nombre: 'Eduardo Gómez',
+          email: 'eduardo@ejemplo.com',
+          emailInvalid: false,
+          studentIds: ['student-1', 'student-2'],
+        },
+        {
+          id: 'parent-2',
+          nombre: 'María Rodríguez',
+          email: 'maria.invalid@gmail.com',
+          emailInvalid: true,
+          studentIds: ['student-3'],
+        },
       ]);
       setStudentsList([
-        { id: 'student-1', studentID_login: 'EST-2026-88123', parentId: 'parent-1', emailPadre: 'eduardo@ejemplo.com', nombre: 'Lucía Gómez', dni: '48123456', nivel: 'inicial', status: 'active' },
-        { id: 'student-2', studentID_login: 'EST-2026-90412', parentId: 'parent-1', emailPadre: 'eduardo@ejemplo.com', nombre: 'Mateo Gómez', dni: '45123987', nivel: 'primaria', status: 'pendingParentActivation' },
-        { id: 'student-3', studentID_login: 'EST-2026-10492', parentId: 'parent-2', emailPadre: 'maria.invalid@gmail.com', nombre: 'Sofía Rodríguez', dni: '42987123', nivel: 'secundaria', status: 'pendingParentActivation' }
+        {
+          id: 'student-1',
+          studentID_login: 'EST-2026-88123',
+          parentId: 'parent-1',
+          emailPadre: 'eduardo@ejemplo.com',
+          nombre: 'Lucía Gómez',
+          dni: '48123456',
+          nivel: 'inicial',
+          status: 'active',
+        },
+        {
+          id: 'student-2',
+          studentID_login: 'EST-2026-90412',
+          parentId: 'parent-1',
+          emailPadre: 'eduardo@ejemplo.com',
+          nombre: 'Mateo Gómez',
+          dni: '45123987',
+          nivel: 'primaria',
+          status: 'pendingParentActivation',
+        },
+        {
+          id: 'student-3',
+          studentID_login: 'EST-2026-10492',
+          parentId: 'parent-2',
+          emailPadre: 'maria.invalid@gmail.com',
+          nombre: 'Sofía Rodríguez',
+          dni: '42987123',
+          nivel: 'secundaria',
+          status: 'pendingParentActivation',
+        },
       ]);
       setMateriasList([
-        { id: 'sec-matematica', nombre: 'Matemática', nivel: 'secundaria', profesorNombre: 'Prof. Analía Torres', profesorDni: '40123456', studentIds: ['student-3'] },
-        { id: 'sec-lengua', nombre: 'Lengua y Literatura', nivel: 'secundaria', profesorNombre: 'Prof. Analía Torres', profesorDni: '40123456', studentIds: ['student-3'] },
-        { id: 'sec-historia', nombre: 'Historia', nivel: 'secundaria', profesorNombre: null, profesorDni: null, studentIds: [] },
-        { id: 'pri-matematica', nombre: 'Matemática', nivel: 'primaria', profesorNombre: null, profesorDni: null, studentIds: ['student-2'] },
-        { id: 'ini-juegos', nombre: 'Juegos y Expresión', nivel: 'inicial', profesorNombre: null, profesorDni: null, studentIds: [] },
+        {
+          id: 'sec-matematica',
+          nombre: 'Matemática',
+          nivel: 'secundaria',
+          profesorNombre: 'Prof. Analía Torres',
+          profesorDni: '40123456',
+          studentIds: ['student-3'],
+        },
+        {
+          id: 'sec-lengua',
+          nombre: 'Lengua y Literatura',
+          nivel: 'secundaria',
+          profesorNombre: 'Prof. Analía Torres',
+          profesorDni: '40123456',
+          studentIds: ['student-3'],
+        },
+        {
+          id: 'sec-historia',
+          nombre: 'Historia',
+          nivel: 'secundaria',
+          profesorNombre: null,
+          profesorDni: null,
+          studentIds: [],
+        },
+        {
+          id: 'pri-matematica',
+          nombre: 'Matemática',
+          nivel: 'primaria',
+          profesorNombre: null,
+          profesorDni: null,
+          studentIds: ['student-2'],
+        },
+        {
+          id: 'ini-juegos',
+          nombre: 'Juegos y Expresión',
+          nivel: 'inicial',
+          profesorNombre: null,
+          profesorDni: null,
+          studentIds: [],
+        },
       ]);
-      setCupoPorMateria({ 'sec-matematica': 1, 'sec-lengua': 1, 'sec-historia': 0, 'pri-matematica': 1, 'ini-juegos': 0 });
+      setCupoPorMateria({
+        'sec-matematica': 1,
+        'sec-lengua': 1,
+        'sec-historia': 0,
+        'pri-matematica': 1,
+        'ini-juegos': 0,
+      });
     } finally {
       setIsLoadingData(false);
     }
@@ -197,40 +305,56 @@ const AdminPanel = () => {
     setFormError('');
 
     if (!parentEmail.trim() || !parentName.trim() || !parentDni.trim()) {
-      setFormError('Por favor, completa todos los datos del tutor (nombre, email y DNI).');
+      setFormError(
+        'Por favor, completa todos los datos del tutor (nombre, email y DNI).'
+      );
       return;
     }
 
     // Validate students list
     for (const std of students) {
-      if (!std.nombre.trim() || !std.dni.trim() || !std.fechaNacimiento || !std.genero) {
-        setFormError('Por favor, completa todos los datos de los estudiantes (incluyendo género).');
+      if (
+        !std.nombre.trim() ||
+        !std.dni.trim() ||
+        !std.fechaNacimiento ||
+        !std.genero
+      ) {
+        setFormError(
+          'Por favor, completa todos los datos de los estudiantes (incluyendo género).'
+        );
         return;
       }
     }
 
     setIsSubmitting(true);
     try {
-      const FUNCTIONS_BASE_URL = import.meta.env.VITE_FUNCTIONS_BASE_URL || (import.meta.env.DEV ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1' : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
-      
+      const FUNCTIONS_BASE_URL =
+        import.meta.env.VITE_FUNCTIONS_BASE_URL ||
+        (import.meta.env.DEV
+          ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1'
+          : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
+
       let token = 'mock-admin-token';
       if (auth.currentUser) {
         token = await auth.currentUser.getIdToken();
       }
 
-      const response = await fetch(`${FUNCTIONS_BASE_URL}/cf_createParentAndStudents`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          parentEmail: parentEmail.trim(),
-          parentName: parentName.trim(),
-          parentDni: parentDni.trim(),
-          students
-        })
-      });
+      const response = await fetch(
+        `${FUNCTIONS_BASE_URL}/cf_createParentAndStudents`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            parentEmail: parentEmail.trim(),
+            parentName: parentName.trim(),
+            parentDni: parentDni.trim(),
+            students,
+          }),
+        }
+      );
 
       if (!response.ok) {
         const errData = await response.json();
@@ -241,7 +365,7 @@ const AdminPanel = () => {
 
       setSuccessModalData({
         title: '¡Tutor y Alumnos Creados!',
-        message: `Se ha registrado a ${parentName} con DNI ${parentDni}. Las cuentas han sido activadas. El tutor podrá ingresar usando su DNI como contraseña temporal.`
+        message: `Se ha registrado a ${parentName} con DNI ${parentDni}. Las cuentas han sido activadas. El tutor podrá ingresar usando su DNI como contraseña temporal.`,
       });
       setSuccessModalOpen(true);
 
@@ -249,11 +373,20 @@ const AdminPanel = () => {
       setParentEmail('');
       setParentName('');
       setParentDni('');
-      setStudents([{ nombre: '', dni: '', fechaNacimiento: '', nivel: 'inicial', genero: 'Masculino' }]);
-
+      setStudents([
+        {
+          nombre: '',
+          dni: '',
+          fechaNacimiento: '',
+          nivel: 'inicial',
+          genero: 'Masculino',
+        },
+      ]);
     } catch (err) {
       console.error(err);
-      setFormError(`Fallo al registrar: ${err.message || 'Error de conexión.'}`);
+      setFormError(
+        `Fallo al registrar: ${err.message || 'Error de conexión.'}`
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -263,33 +396,47 @@ const AdminPanel = () => {
     e.preventDefault();
     setFormError('');
 
-    if (!adminEmail.trim() || !adminName.trim() || !adminRole || !adminDni.trim()) {
-      setFormError('Por favor, completa todos los campos del formulario (incluyendo DNI).');
+    if (
+      !adminEmail.trim() ||
+      !adminName.trim() ||
+      !adminRole ||
+      !adminDni.trim()
+    ) {
+      setFormError(
+        'Por favor, completa todos los campos del formulario (incluyendo DNI).'
+      );
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const FUNCTIONS_BASE_URL = import.meta.env.VITE_FUNCTIONS_BASE_URL || (import.meta.env.DEV ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1' : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
-      
+      const FUNCTIONS_BASE_URL =
+        import.meta.env.VITE_FUNCTIONS_BASE_URL ||
+        (import.meta.env.DEV
+          ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1'
+          : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
+
       let token = 'mock-admin-token';
       if (auth.currentUser) {
         token = await auth.currentUser.getIdToken();
       }
 
-      const response = await fetch(`${FUNCTIONS_BASE_URL}/cf_createAdministrativeUser`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          email: adminEmail.trim(),
-          name: adminName.trim(),
-          role: adminRole,
-          dni: adminDni.trim()
-        })
-      });
+      const response = await fetch(
+        `${FUNCTIONS_BASE_URL}/cf_createAdministrativeUser`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            email: adminEmail.trim(),
+            name: adminName.trim(),
+            role: adminRole,
+            dni: adminDni.trim(),
+          }),
+        }
+      );
 
       if (!response.ok) {
         const errData = await response.json();
@@ -300,7 +447,7 @@ const AdminPanel = () => {
 
       setSuccessModalData({
         title: '¡Usuario Creado!',
-        message: `Se ha registrado a ${adminName} con el rol de ${adminRole}. Cuenta activa. El usuario podrá ingresar utilizando su DNI como contraseña temporal.`
+        message: `Se ha registrado a ${adminName} con el rol de ${adminRole}. Cuenta activa. El usuario podrá ingresar utilizando su DNI como contraseña temporal.`,
       });
       setSuccessModalOpen(true);
 
@@ -309,10 +456,11 @@ const AdminPanel = () => {
       setAdminName('');
       setAdminDni('');
       setAdminRole('Staff');
-
     } catch (err) {
       console.error(err);
-      setFormError(`Fallo al registrar: ${err.message || 'Error de conexión.'}`);
+      setFormError(
+        `Fallo al registrar: ${err.message || 'Error de conexión.'}`
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -330,7 +478,11 @@ const AdminPanel = () => {
 
     setIsCreatingMateria(true);
     try {
-      const FUNCTIONS_BASE_URL = import.meta.env.VITE_FUNCTIONS_BASE_URL || (import.meta.env.DEV ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1' : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
+      const FUNCTIONS_BASE_URL =
+        import.meta.env.VITE_FUNCTIONS_BASE_URL ||
+        (import.meta.env.DEV
+          ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1'
+          : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
 
       let token = 'mock-admin-token';
       if (auth.currentUser) {
@@ -341,13 +493,13 @@ const AdminPanel = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           nombre: materiaNombre.trim(),
           nivel: materiaNivel,
-          profesorUid: materiaProfesorUid || null
-        })
+          profesorUid: materiaProfesorUid || null,
+        }),
       });
 
       if (!response.ok) {
@@ -357,7 +509,7 @@ const AdminPanel = () => {
 
       setSuccessModalData({
         title: '¡Materia Creada!',
-        message: `Se registró la materia "${materiaNombre.trim()}".`
+        message: `Se registró la materia "${materiaNombre.trim()}".`,
       });
       setSuccessModalOpen(true);
 
@@ -379,14 +531,14 @@ const AdminPanel = () => {
     setMateriaEditForm({
       nombre: materia.nombre || '',
       nivel: materia.nivel || 'inicial',
-      profesorUid: materia.profesorUid || ''
+      profesorUid: materia.profesorUid || '',
     });
     setMateriaEditError('');
     setEditingMateria(materia);
   };
 
   const handleEditMateriaFieldChange = (field, value) => {
-    setMateriaEditForm(prev => ({ ...prev, [field]: value }));
+    setMateriaEditForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleEditMateriaSubmit = async (e) => {
@@ -401,7 +553,11 @@ const AdminPanel = () => {
 
     setIsEditingMateria(true);
     try {
-      const FUNCTIONS_BASE_URL = import.meta.env.VITE_FUNCTIONS_BASE_URL || (import.meta.env.DEV ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1' : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
+      const FUNCTIONS_BASE_URL =
+        import.meta.env.VITE_FUNCTIONS_BASE_URL ||
+        (import.meta.env.DEV
+          ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1'
+          : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
 
       let token = 'mock-admin-token';
       if (auth.currentUser) {
@@ -412,14 +568,14 @@ const AdminPanel = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           materiaId: editingMateria.id,
           nombre: materiaEditForm.nombre.trim(),
           nivel: materiaEditForm.nivel,
-          profesorUid: materiaEditForm.profesorUid || null
-        })
+          profesorUid: materiaEditForm.profesorUid || null,
+        }),
       });
 
       if (!response.ok) {
@@ -429,7 +585,7 @@ const AdminPanel = () => {
 
       setSuccessModalData({
         title: '¡Materia Actualizada!',
-        message: `Se actualizaron los datos de "${materiaEditForm.nombre.trim()}".`
+        message: `Se actualizaron los datos de "${materiaEditForm.nombre.trim()}".`,
       });
       setSuccessModalOpen(true);
 
@@ -446,17 +602,23 @@ const AdminPanel = () => {
 
   // ----- GESTIÓN DE ALUMNOS DE UNA MATERIA -----
   const getMateriaLevelStudents = (materia) =>
-    studentsList.filter(s => (s.nivel || 'inicial') === (materia.nivel || 'inicial'));
+    studentsList.filter(
+      (s) => (s.nivel || 'inicial') === (materia.nivel || 'inicial')
+    );
 
   const handleManageStudentsOpen = (materia) => {
-    setMateriaStudentsSelected(Array.isArray(materia.studentIds) ? [...materia.studentIds] : []);
+    setMateriaStudentsSelected(
+      Array.isArray(materia.studentIds) ? [...materia.studentIds] : []
+    );
     setMateriaStudentsError('');
     setManagingMateriaStudents(materia);
   };
 
   const toggleMateriaStudent = (studentId) => {
-    setMateriaStudentsSelected(prev =>
-      prev.includes(studentId) ? prev.filter(id => id !== studentId) : [...prev, studentId]
+    setMateriaStudentsSelected((prev) =>
+      prev.includes(studentId)
+        ? prev.filter((id) => id !== studentId)
+        : [...prev, studentId]
     );
   };
 
@@ -467,24 +629,31 @@ const AdminPanel = () => {
 
     setIsSavingMateriaStudents(true);
     try {
-      const FUNCTIONS_BASE_URL = import.meta.env.VITE_FUNCTIONS_BASE_URL || (import.meta.env.DEV ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1' : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
+      const FUNCTIONS_BASE_URL =
+        import.meta.env.VITE_FUNCTIONS_BASE_URL ||
+        (import.meta.env.DEV
+          ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1'
+          : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
 
       let token = 'mock-admin-token';
       if (auth.currentUser) {
         token = await auth.currentUser.getIdToken();
       }
 
-      const response = await fetch(`${FUNCTIONS_BASE_URL}/cf_setMateriaStudents`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          materiaId: managingMateriaStudents.id,
-          studentIds: materiaStudentsSelected
-        })
-      });
+      const response = await fetch(
+        `${FUNCTIONS_BASE_URL}/cf_setMateriaStudents`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            materiaId: managingMateriaStudents.id,
+            studentIds: materiaStudentsSelected,
+          }),
+        }
+      );
 
       if (!response.ok) {
         const err = await response.json();
@@ -493,7 +662,7 @@ const AdminPanel = () => {
 
       setSuccessModalData({
         title: '¡Inscripciones Actualizadas!',
-        message: `Se actualizaron los alumnos de "${managingMateriaStudents.nombre}" (${materiaStudentsSelected.length} inscriptos).`
+        message: `Se actualizaron los alumnos de "${managingMateriaStudents.nombre}" (${materiaStudentsSelected.length} inscriptos).`,
       });
       setSuccessModalOpen(true);
 
@@ -516,7 +685,16 @@ const AdminPanel = () => {
   };
 
   const addStudentField = () => {
-    setStudents([...students, { nombre: '', dni: '', fechaNacimiento: '', nivel: 'inicial', genero: 'Masculino' }]);
+    setStudents([
+      ...students,
+      {
+        nombre: '',
+        dni: '',
+        fechaNacimiento: '',
+        nivel: 'inicial',
+        genero: 'Masculino',
+      },
+    ]);
   };
 
   const removeStudentField = (index) => {
@@ -531,31 +709,44 @@ const AdminPanel = () => {
       alert('Error: El DNI del usuario es requerido para el restablecimiento.');
       return;
     }
-    if (!window.confirm(`¿Estás seguro de que deseas restablecer la contraseña al DNI (${userDni}) por defecto?`)) {
+    if (
+      !window.confirm(
+        `¿Estás seguro de que deseas restablecer la contraseña al DNI (${userDni}) por defecto?`
+      )
+    ) {
       return;
     }
     try {
-      const FUNCTIONS_BASE_URL = import.meta.env.VITE_FUNCTIONS_BASE_URL || (import.meta.env.DEV ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1' : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
+      const FUNCTIONS_BASE_URL =
+        import.meta.env.VITE_FUNCTIONS_BASE_URL ||
+        (import.meta.env.DEV
+          ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1'
+          : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
       let token = 'mock-admin-token';
       if (auth.currentUser) {
         token = await auth.currentUser.getIdToken();
       }
 
-      const response = await fetch(`${FUNCTIONS_BASE_URL}/cf_resetUserPasswordToDni`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ userId, userType })
-      });
+      const response = await fetch(
+        `${FUNCTIONS_BASE_URL}/cf_resetUserPasswordToDni`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ userId, userType }),
+        }
+      );
 
       if (!response.ok) {
         const err = await response.json();
         throw new Error(err.error || 'Fallo de API.');
       }
 
-      alert('Contraseña restablecida con éxito al DNI. El usuario deberá cambiarla la próxima vez que ingrese.');
+      alert(
+        'Contraseña restablecida con éxito al DNI. El usuario deberá cambiarla la próxima vez que ingrese.'
+      );
       fetchDashboardData();
     } catch (err) {
       alert(`Error al restablecer contraseña: ${err.message}`);
@@ -567,24 +758,31 @@ const AdminPanel = () => {
     e.preventDefault();
     if (!editingUser) return;
     try {
-      const FUNCTIONS_BASE_URL = import.meta.env.VITE_FUNCTIONS_BASE_URL || (import.meta.env.DEV ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1' : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
+      const FUNCTIONS_BASE_URL =
+        import.meta.env.VITE_FUNCTIONS_BASE_URL ||
+        (import.meta.env.DEV
+          ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1'
+          : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
       let token = 'mock-admin-token';
       if (auth.currentUser) {
         token = await auth.currentUser.getIdToken();
       }
 
-      const response = await fetch(`${FUNCTIONS_BASE_URL}/cf_updateUserProfile`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          targetId: editingUser.id,
-          targetType: editingUser.type,
-          fields: editingUser.fields
-        })
-      });
+      const response = await fetch(
+        `${FUNCTIONS_BASE_URL}/cf_updateUserProfile`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            targetId: editingUser.id,
+            targetType: editingUser.type,
+            fields: editingUser.fields,
+          }),
+        }
+      );
 
       if (!response.ok) {
         const err = await response.json();
@@ -600,37 +798,47 @@ const AdminPanel = () => {
   };
 
   const handleEditFieldChange = (field, value) => {
-    setEditingUser(prev => {
+    setEditingUser((prev) => {
       if (!prev) return null;
       return {
         ...prev,
         fields: {
           ...prev.fields,
-          [field]: value
-        }
+          [field]: value,
+        },
       };
     });
   };
 
   // Filter logic on the dashboard list
-  const filteredStudents = studentsList.filter(student => {
-    const matchesSearch = 
-      (student.nombre || '').toLowerCase().includes(searchFilter.toLowerCase()) ||
-      (student.studentID_login || '').toLowerCase().includes(searchFilter.toLowerCase()) ||
+  const filteredStudents = studentsList.filter((student) => {
+    const matchesSearch =
+      (student.nombre || '')
+        .toLowerCase()
+        .includes(searchFilter.toLowerCase()) ||
+      (student.studentID_login || '')
+        .toLowerCase()
+        .includes(searchFilter.toLowerCase()) ||
       (student.dni || '').toLowerCase().includes(searchFilter.toLowerCase()) ||
-      (student.emailPadre || '').toLowerCase().includes(searchFilter.toLowerCase());
-    
-    const matchesLevel = levelFilter === 'todos' || (student.nivel || 'inicial') === levelFilter;
+      (student.emailPadre || '')
+        .toLowerCase()
+        .includes(searchFilter.toLowerCase());
+
+    const matchesLevel =
+      levelFilter === 'todos' || (student.nivel || 'inicial') === levelFilter;
 
     return matchesSearch && matchesLevel;
   });
 
-  const filteredStaff = parentsList.filter(user => {
+  const filteredStaff = parentsList.filter((user) => {
     // Solo personal institucional (user_admin, Staff, Administrativo)
-    const isStaff = user.role === 'user_admin' || user.role === 'Staff' || user.role === 'Administrativo';
+    const isStaff =
+      user.role === 'user_admin' ||
+      user.role === 'Staff' ||
+      user.role === 'Administrativo';
     if (!isStaff) return false;
 
-    const matchesSearch = 
+    const matchesSearch =
       (user.nombre || '').toLowerCase().includes(searchFilter.toLowerCase()) ||
       (user.email || '').toLowerCase().includes(searchFilter.toLowerCase()) ||
       (user.dni || '').toLowerCase().includes(searchFilter.toLowerCase());
@@ -638,21 +846,28 @@ const AdminPanel = () => {
     return matchesSearch;
   });
 
-  const filteredMaterias = materiasList.filter(materia => {
-    const matchesSearch = 
-      (materia.nombre || '').toLowerCase().includes(searchFilter.toLowerCase()) ||
-      (materia.profesorNombre || '').toLowerCase().includes(searchFilter.toLowerCase());
-    
-    const matchesLevel = levelFilter === 'todos' || (materia.nivel || 'inicial') === levelFilter;
+  const filteredMaterias = materiasList.filter((materia) => {
+    const matchesSearch =
+      (materia.nombre || '')
+        .toLowerCase()
+        .includes(searchFilter.toLowerCase()) ||
+      (materia.profesorNombre || '')
+        .toLowerCase()
+        .includes(searchFilter.toLowerCase());
+
+    const matchesLevel =
+      levelFilter === 'todos' || (materia.nivel || 'inicial') === levelFilter;
 
     return matchesSearch && matchesLevel;
   });
 
   // Preservar nombres existentes que no estén en el catálogo para no bloquear su edición.
   const opcionesMateriaEdicion = (() => {
-    const opcionesNivel = MATERIAS_POR_NIVEL[materiaEditForm.nivel || 'inicial'] || [];
+    const opcionesNivel =
+      MATERIAS_POR_NIVEL[materiaEditForm.nivel || 'inicial'] || [];
     const nombreActual = (materiaEditForm.nombre || '').trim();
-    if (!nombreActual || opcionesNivel.includes(nombreActual)) return opcionesNivel;
+    if (!nombreActual || opcionesNivel.includes(nombreActual))
+      return opcionesNivel;
     return [nombreActual, ...opcionesNivel];
   })();
 
@@ -664,8 +879,12 @@ const AdminPanel = () => {
         {/* Header Block */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
           <div>
-            <h1 className="font-headline text-4xl font-extrabold text-slate-800 tracking-tight">Panel de Administración</h1>
-            <p className="font-body text-slate-500 mt-2">Gestión de tutores, estudiantes y activación de credenciales.</p>
+            <h1 className="font-headline text-4xl font-extrabold text-slate-800 tracking-tight">
+              Panel de Administración
+            </h1>
+            <p className="font-body text-slate-500 mt-2">
+              Gestión de tutores, estudiantes y activación de credenciales.
+            </p>
           </div>
 
           {/* Tab Selection buttons */}
@@ -698,13 +917,23 @@ const AdminPanel = () => {
                 </div>
               </button>
             )}
+            {user?.role === 'user_admin' && (
+              <button
+                onClick={() => navigate('/reportes-pagos')}
+                className="px-6 py-2.5 rounded-full font-label font-bold text-sm transition-all cursor-pointer text-slate-600 hover:text-slate-900"
+              >
+                <div className="flex items-center gap-2">
+                  <Icon name="payments" className="text-lg" />
+                  <span>Reportes de Pagos</span>
+                </div>
+              </button>
+            )}
           </div>
         </div>
 
         {/* Dashboard Tab Content */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
-            
             {/* Filters Bar */}
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
               <div className="relative w-full md:w-96">
@@ -714,11 +943,11 @@ const AdminPanel = () => {
                 <input
                   type="text"
                   placeholder={
-                    dashboardSubTab === 'students' 
-                      ? "Buscar por alumno, email del tutor o ID..." 
-                      : dashboardSubTab === 'staff' 
-                        ? "Buscar por docente, email o DNI..." 
-                        : "Buscar materia o docente..."
+                    dashboardSubTab === 'students'
+                      ? 'Buscar por alumno, email del tutor o ID...'
+                      : dashboardSubTab === 'staff'
+                        ? 'Buscar por docente, email o DNI...'
+                        : 'Buscar materia o docente...'
                   }
                   value={searchFilter}
                   onChange={(e) => setSearchFilter(e.target.value)}
@@ -728,7 +957,9 @@ const AdminPanel = () => {
 
               {dashboardSubTab !== 'staff' && (
                 <div className="flex items-center gap-3 w-full md:w-auto">
-                  <label className="text-sm font-semibold text-slate-500 whitespace-nowrap">Nivel Educativo:</label>
+                  <label className="text-sm font-semibold text-slate-500 whitespace-nowrap">
+                    Nivel Educativo:
+                  </label>
                   <select
                     value={levelFilter}
                     onChange={(e) => setLevelFilter(e.target.value)}
@@ -795,43 +1026,65 @@ const AdminPanel = () => {
                   </div>
                 ) : dashboardSubTab === 'materias' ? (
                   <>
-
                     {/* Header + Create Materia */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 border-b border-slate-100">
                       <div className="text-left">
-                        <h3 className="font-headline text-lg font-bold text-slate-800">Materias Curriculares</h3>
-                        <p className="text-sm text-slate-500 mt-0.5">Registro de materias, docente a cargo y cupo de inscriptos.</p>
+                        <h3 className="font-headline text-lg font-bold text-slate-800">
+                          Materias Curriculares
+                        </h3>
+                        <p className="text-sm text-slate-500 mt-0.5">
+                          Registro de materias, docente a cargo y cupo de
+                          inscriptos.
+                        </p>
                       </div>
                       <button
                         type="button"
-                        onClick={() => setShowCreateMateriaForm(!showCreateMateriaForm)}
+                        onClick={() =>
+                          setShowCreateMateriaForm(!showCreateMateriaForm)
+                        }
                         className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-orange-100 hover:bg-orange-200 text-orange-700 font-bold text-xs transition-all cursor-pointer border-none self-start sm:self-auto"
                       >
-                        <Icon name={showCreateMateriaForm ? 'close' : 'add'} className="text-sm" />
-                        {showCreateMateriaForm ? 'Cerrar Formulario' : 'Nueva Materia'}
+                        <Icon
+                          name={showCreateMateriaForm ? 'close' : 'add'}
+                          className="text-sm"
+                        />
+                        {showCreateMateriaForm
+                          ? 'Cerrar Formulario'
+                          : 'Nueva Materia'}
                       </button>
                     </div>
 
                     {/* Create Materia Form */}
                     {showCreateMateriaForm && (
-                      <form onSubmit={handleCreateMateriaSubmit} className="p-6 border-b border-slate-100 bg-slate-50/50 space-y-4 text-left">
+                      <form
+                        onSubmit={handleCreateMateriaSubmit}
+                        className="p-6 border-b border-slate-100 bg-slate-50/50 space-y-4 text-left"
+                      >
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           <div className="flex flex-col gap-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nombre de la Materia</label>
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Nombre de la Materia
+                            </label>
                             <select
                               value={materiaNombre}
                               onChange={(e) => setMateriaNombre(e.target.value)}
                               className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm appearance-none"
                               required
                             >
-                              <option value="" disabled>Seleccionar materia...</option>
+                              <option value="" disabled>
+                                Seleccionar materia...
+                              </option>
                               {MATERIAS_POR_NIVEL[materiaNivel]?.map((mat) => (
-                                <option key={mat} value={mat}>{mat}</option>
+                                <option key={mat} value={mat}>
+                                  {mat}
+                                </option>
                               ))}
                             </select>
                           </div>
                           <div className="flex flex-col gap-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nivel Educativo</label>
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Nivel Educativo
+                            </label>
                             <select
                               value={materiaNivel}
                               onChange={(e) => {
@@ -846,10 +1099,14 @@ const AdminPanel = () => {
                             </select>
                           </div>
                           <div className="flex flex-col gap-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Profesor a Cargo</label>
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Profesor a Cargo
+                            </label>
                             <select
                               value={materiaProfesorUid}
-                              onChange={(e) => setMateriaProfesorUid(e.target.value)}
+                              onChange={(e) =>
+                                setMateriaProfesorUid(e.target.value)
+                              }
                               className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm appearance-none"
                             >
                               <option value="">Sin asignar</option>
@@ -857,20 +1114,26 @@ const AdminPanel = () => {
                                 .filter((u) => ['Staff'].includes(u.role))
                                 .map((prof) => (
                                   <option key={prof.id} value={prof.id}>
-                                    {prof.nombre || prof.email} {prof.dni ? `| DNI ${prof.dni}` : ''}
+                                    {prof.nombre || prof.email}{' '}
+                                    {prof.dni ? `| DNI ${prof.dni}` : ''}
                                   </option>
                                 ))}
                             </select>
-                            {parentsList.filter((u) => ['Staff'].includes(u.role)).length === 0 && (
+                            {parentsList.filter((u) =>
+                              ['Staff'].includes(u.role)
+                            ).length === 0 && (
                               <p className="text-[11px] text-amber-600 font-semibold">
-                                No hay docentes cargados. Registrá personal para poder asignar profesores.
+                                No hay docentes cargados. Registrá personal para
+                                poder asignar profesores.
                               </p>
                             )}
                           </div>
                         </div>
 
                         {materiaFormError && (
-                          <p className="text-xs text-red-500 font-bold bg-red-50 border border-red-100 p-3 rounded-xl">{materiaFormError}</p>
+                          <p className="text-xs text-red-500 font-bold bg-red-50 border border-red-100 p-3 rounded-xl">
+                            {materiaFormError}
+                          </p>
                         )}
 
                         <button
@@ -878,16 +1141,25 @@ const AdminPanel = () => {
                           disabled={isCreatingMateria}
                           className="w-full flex justify-center items-center py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold text-sm rounded-full shadow-lg shadow-orange-600/10 transition-all cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed border-none"
                         >
-                          {isCreatingMateria ? 'Guardando...' : 'Registrar Materia'}
+                          {isCreatingMateria
+                            ? 'Guardando...'
+                            : 'Registrar Materia'}
                         </button>
                       </form>
                     )}
 
                     {filteredMaterias.length === 0 ? (
                       <div className="p-16 text-center text-slate-500">
-                        <Icon name="menu_book" className="text-5xl text-slate-300 mb-4" />
-                        <p className="font-bold text-lg">No hay materias registradas</p>
-                        <p className="text-sm mt-1">Usá "Nueva Materia" para registrar la primera.</p>
+                        <Icon
+                          name="menu_book"
+                          className="text-5xl text-slate-300 mb-4"
+                        />
+                        <p className="font-bold text-lg">
+                          No hay materias registradas
+                        </p>
+                        <p className="text-sm mt-1">
+                          Usá "Nueva Materia" para registrar la primera.
+                        </p>
                       </div>
                     ) : (
                       <>
@@ -899,46 +1171,74 @@ const AdminPanel = () => {
                                 <th className="py-4 px-6">Materia</th>
                                 <th className="py-4 px-6">Nivel Educativo</th>
                                 <th className="py-4 px-6">Profesor a Cargo</th>
-                                <th className="py-4 px-6 text-center">Cupo Inscriptos</th>
-                                <th className="py-4 px-6 text-right">Acciones</th>
+                                <th className="py-4 px-6 text-center">
+                                  Cupo Inscriptos
+                                </th>
+                                <th className="py-4 px-6 text-right">
+                                  Acciones
+                                </th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 font-body text-sm text-slate-700">
                               {filteredMaterias.map((materia) => (
-                                <tr key={materia.id} className="hover:bg-slate-50/50 transition-colors">
+                                <tr
+                                  key={materia.id}
+                                  className="hover:bg-slate-50/50 transition-colors"
+                                >
                                   <td className="py-5 px-6">
                                     <div className="flex flex-col gap-0.5">
-                                      <span className="font-bold text-slate-800">{materia.nombre}</span>
+                                      <span className="font-bold text-slate-800">
+                                        {materia.nombre}
+                                      </span>
                                     </div>
                                   </td>
                                   <td className="py-5 px-6">
-                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                      (materia.nivel || 'inicial') === 'inicial' ? 'bg-secondary-container/20 text-secondary' :
-                                      (materia.nivel || 'inicial') === 'primaria' ? 'bg-primary-container/20 text-primary' :
-                                      'bg-tertiary-container/20 text-tertiary-dim'
-                                    }`}>
-                                      {(materia.nivel || 'inicial').toUpperCase()}
+                                    <span
+                                      className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                        (materia.nivel || 'inicial') ===
+                                        'inicial'
+                                          ? 'bg-secondary-container/20 text-secondary'
+                                          : (materia.nivel || 'inicial') ===
+                                              'primaria'
+                                            ? 'bg-primary-container/20 text-primary'
+                                            : 'bg-tertiary-container/20 text-tertiary-dim'
+                                      }`}
+                                    >
+                                      {(
+                                        materia.nivel || 'inicial'
+                                      ).toUpperCase()}
                                     </span>
                                   </td>
                                   <td className="py-5 px-6">
                                     {materia.profesorNombre ? (
                                       <div className="flex flex-col gap-0.5">
-                                        <span className="font-semibold text-slate-700">{materia.profesorNombre}</span>
+                                        <span className="font-semibold text-slate-700">
+                                          {materia.profesorNombre}
+                                        </span>
                                         {materia.profesorDni && (
-                                          <span className="text-xs text-slate-400 font-mono">DNI: {materia.profesorDni}</span>
+                                          <span className="text-xs text-slate-400 font-mono">
+                                            DNI: {materia.profesorDni}
+                                          </span>
                                         )}
                                       </div>
                                     ) : (
                                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">
-                                        <Icon name="person_off" className="text-xs" />
+                                        <Icon
+                                          name="person_off"
+                                          className="text-xs"
+                                        />
                                         Sin asignar
                                       </span>
                                     )}
                                   </td>
                                   <td className="py-5 px-6 text-center">
-                                    <span className={`inline-flex items-center justify-center gap-1 min-w-[2.5rem] px-2.5 py-1 rounded-full text-sm font-bold ${
-                                      (cupoPorMateria[materia.id] || 0) > 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-slate-100 text-slate-400 border border-slate-200'
-                                    }`}>
+                                    <span
+                                      className={`inline-flex items-center justify-center gap-1 min-w-[2.5rem] px-2.5 py-1 rounded-full text-sm font-bold ${
+                                        (cupoPorMateria[materia.id] || 0) > 0
+                                          ? 'bg-green-50 text-green-700 border border-green-200'
+                                          : 'bg-slate-100 text-slate-400 border border-slate-200'
+                                      }`}
+                                    >
                                       <Icon name="groups" className="text-sm" />
                                       {cupoPorMateria[materia.id] || 0}
                                     </span>
@@ -947,19 +1247,29 @@ const AdminPanel = () => {
                                     <div className="inline-flex items-center gap-2 justify-end">
                                       <button
                                         type="button"
-                                        onClick={() => handleEditMateriaOpen(materia)}
+                                        onClick={() =>
+                                          handleEditMateriaOpen(materia)
+                                        }
                                         title="Editar materia"
                                         className="p-2.5 rounded-full bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-500 transition-all cursor-pointer border-none"
                                       >
-                                        <Icon name="edit" className="text-base leading-none" />
+                                        <Icon
+                                          name="edit"
+                                          className="text-base leading-none"
+                                        />
                                       </button>
                                       <button
                                         type="button"
-                                        onClick={() => handleManageStudentsOpen(materia)}
+                                        onClick={() =>
+                                          handleManageStudentsOpen(materia)
+                                        }
                                         title="Gestionar alumnos inscriptos"
                                         className="p-2.5 rounded-full bg-slate-100 hover:bg-blue-100 hover:text-blue-700 text-slate-500 transition-all cursor-pointer border-none"
                                       >
-                                        <Icon name="groups" className="text-base leading-none" />
+                                        <Icon
+                                          name="groups"
+                                          className="text-base leading-none"
+                                        />
                                       </button>
                                     </div>
                                   </td>
@@ -972,37 +1282,60 @@ const AdminPanel = () => {
                         {/* Vista Mobile (Tarjetas) */}
                         <div className="block md:hidden space-y-4 p-4 bg-slate-50/50">
                           {filteredMaterias.map((materia) => (
-                            <div key={materia.id} className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm space-y-4 text-left">
+                            <div
+                              key={materia.id}
+                              className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm space-y-4 text-left"
+                            >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex flex-col gap-1">
-                                  <span className="font-bold text-base text-slate-800 leading-tight">{materia.nombre}</span>
-                                  <span className={`inline-flex w-max px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
-                                    (materia.nivel || 'inicial') === 'inicial' ? 'bg-secondary-container/20 text-secondary' :
-                                    (materia.nivel || 'inicial') === 'primaria' ? 'bg-primary-container/20 text-primary' :
-                                    'bg-tertiary-container/20 text-tertiary-dim'
-                                  }`}>
+                                  <span className="font-bold text-base text-slate-800 leading-tight">
+                                    {materia.nombre}
+                                  </span>
+                                  <span
+                                    className={`inline-flex w-max px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                                      (materia.nivel || 'inicial') === 'inicial'
+                                        ? 'bg-secondary-container/20 text-secondary'
+                                        : (materia.nivel || 'inicial') ===
+                                            'primaria'
+                                          ? 'bg-primary-container/20 text-primary'
+                                          : 'bg-tertiary-container/20 text-tertiary-dim'
+                                    }`}
+                                  >
                                     {(materia.nivel || 'inicial').toUpperCase()}
                                   </span>
                                 </div>
-                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
-                                  (cupoPorMateria[materia.id] || 0) > 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-slate-100 text-slate-400 border border-slate-200'
-                                }`}>
+                                <span
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                                    (cupoPorMateria[materia.id] || 0) > 0
+                                      ? 'bg-green-50 text-green-700 border border-green-200'
+                                      : 'bg-slate-100 text-slate-400 border border-slate-200'
+                                  }`}
+                                >
                                   <Icon name="groups" className="text-sm" />
                                   {cupoPorMateria[materia.id] || 0}
                                 </span>
                               </div>
                               <div>
-                                <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[9px]">Profesor a Cargo</span>
+                                <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[9px]">
+                                  Profesor a Cargo
+                                </span>
                                 {materia.profesorNombre ? (
                                   <div className="flex flex-col">
-                                    <span className="font-bold text-xs text-slate-700">{materia.profesorNombre}</span>
+                                    <span className="font-bold text-xs text-slate-700">
+                                      {materia.profesorNombre}
+                                    </span>
                                     {materia.profesorDni && (
-                                      <span className="text-xs text-slate-500 font-mono">DNI: {materia.profesorDni}</span>
+                                      <span className="text-xs text-slate-500 font-mono">
+                                        DNI: {materia.profesorDni}
+                                      </span>
                                     )}
                                   </div>
                                 ) : (
                                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 mt-1">
-                                    <Icon name="person_off" className="text-xs" />
+                                    <Icon
+                                      name="person_off"
+                                      className="text-xs"
+                                    />
                                     Sin asignar
                                   </span>
                                 )}
@@ -1013,14 +1346,18 @@ const AdminPanel = () => {
                                   onClick={() => handleEditMateriaOpen(materia)}
                                   className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-full bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-600 font-bold text-xs transition-all cursor-pointer border-none"
                                 >
-                                  <Icon name="edit" className="text-sm" /> Editar
+                                  <Icon name="edit" className="text-sm" />{' '}
+                                  Editar
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleManageStudentsOpen(materia)}
+                                  onClick={() =>
+                                    handleManageStudentsOpen(materia)
+                                  }
                                   className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-full bg-slate-100 hover:bg-blue-100 hover:text-blue-700 text-slate-600 font-bold text-xs transition-all cursor-pointer border-none"
                                 >
-                                  <Icon name="groups" className="text-sm" /> Alumnos
+                                  <Icon name="groups" className="text-sm" />{' '}
+                                  Alumnos
                                 </button>
                               </div>
                             </div>
@@ -1029,11 +1366,23 @@ const AdminPanel = () => {
                       </>
                     )}
                   </>
-                ) : (dashboardSubTab === 'students' ? filteredStudents.length === 0 : filteredStaff.length === 0) ? (
+                ) : (
+                    dashboardSubTab === 'students'
+                      ? filteredStudents.length === 0
+                      : filteredStaff.length === 0
+                  ) ? (
                   <div className="p-16 text-center text-slate-500">
-                    <Icon name="person_off" className="text-5xl text-slate-300 mb-4" />
-                    <p className="font-bold text-lg">No se encontraron usuarios</p>
-                    <p className="text-sm mt-1">Prueba con otros criterios de búsqueda o añade nuevos usuarios.</p>
+                    <Icon
+                      name="person_off"
+                      className="text-5xl text-slate-300 mb-4"
+                    />
+                    <p className="font-bold text-lg">
+                      No se encontraron usuarios
+                    </p>
+                    <p className="text-sm mt-1">
+                      Prueba con otros criterios de búsqueda o añade nuevos
+                      usuarios.
+                    </p>
                   </div>
                 ) : dashboardSubTab === 'students' ? (
                   <>
@@ -1051,35 +1400,66 @@ const AdminPanel = () => {
                         </thead>
                         <tbody className="divide-y divide-slate-100 font-body text-sm text-slate-700">
                           {filteredStudents.map((student) => {
-                            const parent = parentsList.find(p => p.id === student.parentId) || { nombre: 'Sin Tutor', email: '', dni: '', mustChangePassword: true, emailInvalid: false };
+                            const parent = parentsList.find(
+                              (p) => p.id === student.parentId
+                            ) || {
+                              nombre: 'Sin Tutor',
+                              email: '',
+                              dni: '',
+                              mustChangePassword: true,
+                              emailInvalid: false,
+                            };
                             return (
-                              <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
+                              <tr
+                                key={student.id}
+                                className="hover:bg-slate-50/50 transition-colors"
+                              >
                                 <td className="py-5 px-6">
                                   <div className="flex flex-col gap-0.5">
-                                    <span className="font-bold text-slate-800">{student.nombre}</span>
+                                    <span className="font-bold text-slate-800">
+                                      {student.nombre}
+                                    </span>
                                     <span className="text-xs text-slate-400 font-mono">
-                                      {student.studentID_login} | DNI: {student.dni} | Género: {student.genero || 'No especificado'}
+                                      {student.studentID_login} | DNI:{' '}
+                                      {student.dni} | Género:{' '}
+                                      {student.genero || 'No especificado'}
                                     </span>
                                   </div>
                                 </td>
                                 <td className="py-5 px-6">
-                                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                    (student.nivel || 'inicial') === 'inicial' ? 'bg-secondary-container/20 text-secondary' :
-                                    (student.nivel || 'inicial') === 'primaria' ? 'bg-primary-container/20 text-primary' :
-                                    'bg-tertiary-container/20 text-tertiary-dim'
-                                  }`}>
+                                  <span
+                                    className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                      (student.nivel || 'inicial') === 'inicial'
+                                        ? 'bg-secondary-container/20 text-secondary'
+                                        : (student.nivel || 'inicial') ===
+                                            'primaria'
+                                          ? 'bg-primary-container/20 text-primary'
+                                          : 'bg-tertiary-container/20 text-tertiary-dim'
+                                    }`}
+                                  >
                                     {(student.nivel || 'inicial').toUpperCase()}
                                   </span>
                                 </td>
                                 <td className="py-5 px-6">
                                   <div className="flex flex-col gap-0.5">
-                                    <span className="font-semibold text-slate-700">{parent.nombre}</span>
+                                    <span className="font-semibold text-slate-700">
+                                      {parent.nombre}
+                                    </span>
                                     <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                                      <span>{parent.email || student.emailPadre}</span>
-                                      {parent.dni && <span className="text-slate-300">| DNI: {parent.dni}</span>}
+                                      <span>
+                                        {parent.email || student.emailPadre}
+                                      </span>
+                                      {parent.dni && (
+                                        <span className="text-slate-300">
+                                          | DNI: {parent.dni}
+                                        </span>
+                                      )}
                                       {parent.emailInvalid && (
                                         <span className="flex items-center gap-0.5 text-red-500 font-bold uppercase tracking-wider text-[9px] bg-red-50 px-1.5 py-0.5 rounded border border-red-200">
-                                          <Icon name="error" className="text-[10px]" />
+                                          <Icon
+                                            name="error"
+                                            className="text-[10px]"
+                                          />
                                           Email Inválido
                                         </span>
                                       )}
@@ -1088,49 +1468,78 @@ const AdminPanel = () => {
                                 </td>
                                 <td className="py-5 px-6">
                                   <div className="flex flex-col gap-1.5">
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold w-max ${
-                                      student.mustChangePassword
-                                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                        : 'bg-green-50 text-green-700 border border-green-200'
-                                    }`}>
-                                      <span className={`h-1.5 w-1.5 rounded-full ${student.mustChangePassword ? 'bg-amber-500' : 'bg-green-600'}`} />
-                                      Alumno: {student.mustChangePassword ? 'Temporal (DNI)' : 'Cambiada'}
+                                    <span
+                                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold w-max ${
+                                        student.mustChangePassword
+                                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                          : 'bg-green-50 text-green-700 border border-green-200'
+                                      }`}
+                                    >
+                                      <span
+                                        className={`h-1.5 w-1.5 rounded-full ${student.mustChangePassword ? 'bg-amber-500' : 'bg-green-600'}`}
+                                      />
+                                      Alumno:{' '}
+                                      {student.mustChangePassword
+                                        ? 'Temporal (DNI)'
+                                        : 'Cambiada'}
                                     </span>
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold w-max ${
-                                      parent.mustChangePassword
-                                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                        : 'bg-green-50 text-green-700 border border-green-200'
-                                    }`}>
-                                      <span className={`h-1.5 w-1.5 rounded-full ${parent.mustChangePassword ? 'bg-amber-500' : 'bg-green-600'}`} />
-                                      Tutor: {parent.mustChangePassword ? 'Temporal (DNI)' : 'Cambiada'}
+                                    <span
+                                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold w-max ${
+                                        parent.mustChangePassword
+                                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                          : 'bg-green-50 text-green-700 border border-green-200'
+                                      }`}
+                                    >
+                                      <span
+                                        className={`h-1.5 w-1.5 rounded-full ${parent.mustChangePassword ? 'bg-amber-500' : 'bg-green-600'}`}
+                                      />
+                                      Tutor:{' '}
+                                      {parent.mustChangePassword
+                                        ? 'Temporal (DNI)'
+                                        : 'Cambiada'}
                                     </span>
                                   </div>
                                 </td>
                                 <td className="py-5 px-6">
                                   <div className="flex flex-col gap-2">
                                     <div className="flex items-center gap-1.5 bg-orange-50/50 p-1.5 rounded-lg border border-orange-100">
-                                      <span className="text-[10px] font-bold text-orange-700 uppercase">Alumno:</span>
+                                      <span className="text-[10px] font-bold text-orange-700 uppercase">
+                                        Alumno:
+                                      </span>
                                       <button
                                         type="button"
-                                        onClick={() => handleResetPassword(student.id, 'student', student.dni)}
+                                        onClick={() =>
+                                          handleResetPassword(
+                                            student.id,
+                                            'student',
+                                            student.dni
+                                          )
+                                        }
                                         title="Restablecer clave del estudiante al DNI"
                                         className="p-1 rounded bg-white text-orange-600 hover:bg-orange-50 transition-colors cursor-pointer border border-orange-200/50"
                                       >
-                                        <Icon name="lock_reset" className="text-sm" />
+                                        <Icon
+                                          name="lock_reset"
+                                          className="text-sm"
+                                        />
                                       </button>
                                       <button
                                         type="button"
-                                        onClick={() => setEditingUser({
-                                          id: student.id,
-                                          type: 'student',
-                                          fields: {
-                                            nombre: student.nombre || '',
-                                            dni: student.dni || '',
-                                            fechaNacimiento: student.fechaNacimiento || '',
-                                            nivel: student.nivel || 'inicial',
-                                            genero: student.genero || 'Masculino'
-                                          }
-                                        })}
+                                        onClick={() =>
+                                          setEditingUser({
+                                            id: student.id,
+                                            type: 'student',
+                                            fields: {
+                                              nombre: student.nombre || '',
+                                              dni: student.dni || '',
+                                              fechaNacimiento:
+                                                student.fechaNacimiento || '',
+                                              nivel: student.nivel || 'inicial',
+                                              genero:
+                                                student.genero || 'Masculino',
+                                            },
+                                          })
+                                        }
                                         title="Editar datos del alumno"
                                         className="p-1 rounded bg-white text-orange-600 hover:bg-orange-50 transition-colors cursor-pointer border border-orange-200/50"
                                       >
@@ -1139,30 +1548,49 @@ const AdminPanel = () => {
                                     </div>
                                     {student.parentId && (
                                       <div className="flex items-center gap-1.5 bg-indigo-50/50 p-1.5 rounded-lg border border-indigo-100">
-                                        <span className="text-[10px] font-bold text-indigo-700 uppercase">Tutor:</span>
+                                        <span className="text-[10px] font-bold text-indigo-700 uppercase">
+                                          Tutor:
+                                        </span>
                                         <button
                                           type="button"
-                                          onClick={() => handleResetPassword(student.parentId, 'parent', parent.dni)}
+                                          onClick={() =>
+                                            handleResetPassword(
+                                              student.parentId,
+                                              'parent',
+                                              parent.dni
+                                            )
+                                          }
                                           title="Restablecer clave del tutor al DNI"
                                           className="p-1 rounded bg-white text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer border border-indigo-200/50"
                                         >
-                                          <Icon name="lock_reset" className="text-sm" />
+                                          <Icon
+                                            name="lock_reset"
+                                            className="text-sm"
+                                          />
                                         </button>
                                         <button
                                           type="button"
-                                          onClick={() => setEditingUser({
-                                            id: student.parentId,
-                                            type: 'parent',
-                                            fields: {
-                                              nombre: parent.nombre || '',
-                                              dni: parent.dni || '',
-                                              email: parent.email || student.emailPadre || ''
-                                            }
-                                          })}
+                                          onClick={() =>
+                                            setEditingUser({
+                                              id: student.parentId,
+                                              type: 'parent',
+                                              fields: {
+                                                nombre: parent.nombre || '',
+                                                dni: parent.dni || '',
+                                                email:
+                                                  parent.email ||
+                                                  student.emailPadre ||
+                                                  '',
+                                              },
+                                            })
+                                          }
                                           title="Editar datos del tutor"
                                           className="p-1 rounded bg-white text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer border border-indigo-200/50"
                                         >
-                                          <Icon name="edit" className="text-sm" />
+                                          <Icon
+                                            name="edit"
+                                            className="text-sm"
+                                          />
                                         </button>
                                       </div>
                                     )}
@@ -1178,42 +1606,79 @@ const AdminPanel = () => {
                     {/* Vista Mobile (Tarjetas) */}
                     <div className="block md:hidden space-y-4 p-4 bg-slate-50/50">
                       {filteredStudents.map((student) => {
-                        const parent = parentsList.find(p => p.id === student.parentId) || { nombre: 'Sin Tutor', email: '', dni: '', mustChangePassword: true, emailInvalid: false };
+                        const parent = parentsList.find(
+                          (p) => p.id === student.parentId
+                        ) || {
+                          nombre: 'Sin Tutor',
+                          email: '',
+                          dni: '',
+                          mustChangePassword: true,
+                          emailInvalid: false,
+                        };
                         return (
-                          <div key={student.id} className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm space-y-4 text-left">
+                          <div
+                            key={student.id}
+                            className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm space-y-4 text-left"
+                          >
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex flex-col gap-1">
-                                <span className="font-bold text-base text-slate-800 leading-tight">{student.nombre}</span>
-                                <span className="text-xs text-slate-400 font-mono">{student.studentID_login}</span>
+                                <span className="font-bold text-base text-slate-800 leading-tight">
+                                  {student.nombre}
+                                </span>
+                                <span className="text-xs text-slate-400 font-mono">
+                                  {student.studentID_login}
+                                </span>
                               </div>
-                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase whitespace-nowrap ${
-                                (student.nivel || 'inicial') === 'inicial' ? 'bg-secondary-container/20 text-secondary' :
-                                (student.nivel || 'inicial') === 'primaria' ? 'bg-primary-container/20 text-primary' :
-                                'bg-tertiary-container/20 text-tertiary-dim'
-                              }`}>
+                              <span
+                                className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase whitespace-nowrap ${
+                                  (student.nivel || 'inicial') === 'inicial'
+                                    ? 'bg-secondary-container/20 text-secondary'
+                                    : (student.nivel || 'inicial') ===
+                                        'primaria'
+                                      ? 'bg-primary-container/20 text-primary'
+                                      : 'bg-tertiary-container/20 text-tertiary-dim'
+                                }`}
+                              >
                                 {(student.nivel || 'inicial').toUpperCase()}
                               </span>
                             </div>
 
                             <div className="grid grid-cols-2 gap-2 text-xs border-t border-b border-slate-50 py-2">
                               <div>
-                                <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[9px]">DNI Alumno</span>
-                                <span className="font-bold text-slate-700">{student.dni}</span>
+                                <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[9px]">
+                                  DNI Alumno
+                                </span>
+                                <span className="font-bold text-slate-700">
+                                  {student.dni}
+                                </span>
                               </div>
                               <div>
-                                <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[9px]">Género</span>
-                                <span className="font-bold text-slate-700">{student.genero || 'No especificado'}</span>
+                                <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[9px]">
+                                  Género
+                                </span>
+                                <span className="font-bold text-slate-700">
+                                  {student.genero || 'No especificado'}
+                                </span>
                               </div>
                             </div>
 
                             <div className="space-y-1">
-                              <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[9px]">Tutor Responsable</span>
+                              <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[9px]">
+                                Tutor Responsable
+                              </span>
                               <div className="flex flex-col">
-                                <span className="font-bold text-xs text-slate-700">{parent.nombre}</span>
-                                <span className="text-xs text-slate-500">{parent.email || student.emailPadre}</span>
+                                <span className="font-bold text-xs text-slate-700">
+                                  {parent.nombre}
+                                </span>
+                                <span className="text-xs text-slate-500">
+                                  {parent.email || student.emailPadre}
+                                </span>
                                 {parent.emailInvalid && (
                                   <span className="flex items-center gap-1 text-red-500 font-bold uppercase tracking-wider text-[9px] mt-1">
-                                    <Icon name="error" className="text-[10px]" />
+                                    <Icon
+                                      name="error"
+                                      className="text-[10px]"
+                                    />
                                     Email Inválido
                                   </span>
                                 )}
@@ -1221,86 +1686,142 @@ const AdminPanel = () => {
                             </div>
 
                             <div className="flex flex-wrap gap-2 pt-1">
-                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                                student.mustChangePassword ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-green-50 text-green-700 border border-green-100'
-                              }`}>
-                                <span className={`h-1.5 w-1.5 rounded-full ${student.mustChangePassword ? 'bg-amber-500' : 'bg-green-600'}`} />
-                                Alumno: {student.mustChangePassword ? 'Temporal' : 'Activa'}
+                              <span
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                  student.mustChangePassword
+                                    ? 'bg-amber-50 text-amber-700 border border-amber-100'
+                                    : 'bg-green-50 text-green-700 border border-green-100'
+                                }`}
+                              >
+                                <span
+                                  className={`h-1.5 w-1.5 rounded-full ${student.mustChangePassword ? 'bg-amber-500' : 'bg-green-600'}`}
+                                />
+                                Alumno:{' '}
+                                {student.mustChangePassword
+                                  ? 'Temporal'
+                                  : 'Activa'}
                               </span>
                               {student.parentId && (
-                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                                  parent.mustChangePassword ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-green-50 text-green-700 border border-green-100'
-                                }`}>
-                                  <span className={`h-1.5 w-1.5 rounded-full ${parent.mustChangePassword ? 'bg-amber-500' : 'bg-green-600'}`} />
-                                  Tutor: {parent.mustChangePassword ? 'Temporal' : 'Activa'}
+                                <span
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                    parent.mustChangePassword
+                                      ? 'bg-amber-50 text-amber-700 border border-amber-100'
+                                      : 'bg-green-50 text-green-700 border border-green-100'
+                                  }`}
+                                >
+                                  <span
+                                    className={`h-1.5 w-1.5 rounded-full ${parent.mustChangePassword ? 'bg-amber-500' : 'bg-green-600'}`}
+                                  />
+                                  Tutor:{' '}
+                                  {parent.mustChangePassword
+                                    ? 'Temporal'
+                                    : 'Activa'}
                                 </span>
                               )}
                             </div>
 
                             <div className="flex gap-2.5 pt-2 border-t border-slate-50">
                               <div className="flex-1 flex flex-col gap-1 bg-slate-50 p-2 rounded-xl border border-slate-100 text-center">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase">Alumno</span>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase">
+                                  Alumno
+                                </span>
                                 <div className="flex justify-center gap-2 mt-1">
                                   <button
                                     type="button"
-                                    onClick={() => handleResetPassword(student.id, 'student', student.dni)}
+                                    onClick={() =>
+                                      handleResetPassword(
+                                        student.id,
+                                        'student',
+                                        student.dni
+                                      )
+                                    }
                                     title="Restablecer clave al DNI"
                                     className="flex-1 py-1.5 px-2 rounded bg-white text-orange-600 hover:bg-orange-50 transition-colors cursor-pointer border border-orange-200/50 flex items-center justify-center gap-1"
                                   >
-                                    <Icon name="lock_reset" className="text-sm" />
-                                    <span className="text-[10px] font-bold">Reset</span>
+                                    <Icon
+                                      name="lock_reset"
+                                      className="text-sm"
+                                    />
+                                    <span className="text-[10px] font-bold">
+                                      Reset
+                                    </span>
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => setEditingUser({
-                                      id: student.id,
-                                      type: 'student',
-                                      fields: {
-                                        nombre: student.nombre || '',
-                                        dni: student.dni || '',
-                                        fechaNacimiento: student.fechaNacimiento || '',
-                                        nivel: student.nivel || 'inicial',
-                                        genero: student.genero || 'Masculino'
-                                      }
-                                    })}
+                                    onClick={() =>
+                                      setEditingUser({
+                                        id: student.id,
+                                        type: 'student',
+                                        fields: {
+                                          nombre: student.nombre || '',
+                                          dni: student.dni || '',
+                                          fechaNacimiento:
+                                            student.fechaNacimiento || '',
+                                          nivel: student.nivel || 'inicial',
+                                          genero: student.genero || 'Masculino',
+                                        },
+                                      })
+                                    }
                                     title="Editar datos"
                                     className="flex-1 py-1.5 px-2 rounded bg-white text-orange-600 hover:bg-orange-50 transition-colors cursor-pointer border border-orange-200/50 flex items-center justify-center gap-1"
                                   >
                                     <Icon name="edit" className="text-sm" />
-                                    <span className="text-[10px] font-bold">Editar</span>
+                                    <span className="text-[10px] font-bold">
+                                      Editar
+                                    </span>
                                   </button>
                                 </div>
                               </div>
 
                               {student.parentId && (
                                 <div className="flex-1 flex flex-col gap-1 bg-slate-50 p-2 rounded-xl border border-slate-100 text-center">
-                                  <span className="text-[9px] font-bold text-slate-400 uppercase">Tutor</span>
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase">
+                                    Tutor
+                                  </span>
                                   <div className="flex justify-center gap-2 mt-1">
                                     <button
                                       type="button"
-                                      onClick={() => handleResetPassword(student.parentId, 'parent', parent.dni)}
+                                      onClick={() =>
+                                        handleResetPassword(
+                                          student.parentId,
+                                          'parent',
+                                          parent.dni
+                                        )
+                                      }
                                       title="Restablecer clave al DNI"
                                       className="flex-1 py-1.5 px-2 rounded bg-white text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer border border-indigo-200/50 flex items-center justify-center gap-1"
                                     >
-                                      <Icon name="lock_reset" className="text-sm" />
-                                      <span className="text-[10px] font-bold">Reset</span>
+                                      <Icon
+                                        name="lock_reset"
+                                        className="text-sm"
+                                      />
+                                      <span className="text-[10px] font-bold">
+                                        Reset
+                                      </span>
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => setEditingUser({
-                                        id: student.parentId,
-                                        type: 'parent',
-                                        fields: {
-                                          nombre: parent.nombre || '',
-                                          dni: parent.dni || '',
-                                          email: parent.email || student.emailPadre || ''
-                                        }
-                                      })}
+                                      onClick={() =>
+                                        setEditingUser({
+                                          id: student.parentId,
+                                          type: 'parent',
+                                          fields: {
+                                            nombre: parent.nombre || '',
+                                            dni: parent.dni || '',
+                                            email:
+                                              parent.email ||
+                                              student.emailPadre ||
+                                              '',
+                                          },
+                                        })
+                                      }
                                       title="Editar datos"
                                       className="flex-1 py-1.5 px-2 rounded bg-white text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer border border-indigo-200/50 flex items-center justify-center gap-1"
                                     >
                                       <Icon name="edit" className="text-sm" />
-                                      <span className="text-[10px] font-bold">Editar</span>
+                                      <span className="text-[10px] font-bold">
+                                        Editar
+                                      </span>
                                     </button>
                                   </div>
                                 </div>
@@ -1327,59 +1848,91 @@ const AdminPanel = () => {
                         </thead>
                         <tbody className="divide-y divide-slate-100 font-body text-sm text-slate-700">
                           {filteredStaff.map((staff) => (
-                            <tr key={staff.id} className="hover:bg-slate-50/50 transition-colors">
+                            <tr
+                              key={staff.id}
+                              className="hover:bg-slate-50/50 transition-colors"
+                            >
                               <td className="py-5 px-6">
                                 <div className="flex flex-col gap-0.5">
-                                  <span className="font-bold text-slate-800">{staff.nombre}</span>
-                                  <span className="text-xs text-slate-400 font-mono">DNI: {staff.dni || 'No registrado'}</span>
+                                  <span className="font-bold text-slate-800">
+                                    {staff.nombre}
+                                  </span>
+                                  <span className="text-xs text-slate-400 font-mono">
+                                    DNI: {staff.dni || 'No registrado'}
+                                  </span>
                                 </div>
                               </td>
                               <td className="py-5 px-6">
-                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                  staff.role === 'user_admin' ? 'bg-red-50 text-red-700 border border-red-200' :
-                                  staff.role === 'Administrativo' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
-                                  'bg-green-50 text-green-700 border border-green-200'
-                                }`}>
-                                  {staff.role === 'user_admin' ? 'Administrador General' :
-                                   staff.role === 'Administrativo' ? 'Administrativo' :
-                                   'Docente / Staff'}
+                                <span
+                                  className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                    staff.role === 'user_admin'
+                                      ? 'bg-red-50 text-red-700 border border-red-200'
+                                      : staff.role === 'Administrativo'
+                                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                        : 'bg-green-50 text-green-700 border border-green-200'
+                                  }`}
+                                >
+                                  {staff.role === 'user_admin'
+                                    ? 'Administrador General'
+                                    : staff.role === 'Administrativo'
+                                      ? 'Administrativo'
+                                      : 'Docente / Staff'}
                                 </span>
                               </td>
                               <td className="py-5 px-6">
-                                <span className="text-slate-600">{staff.email}</span>
+                                <span className="text-slate-600">
+                                  {staff.email}
+                                </span>
                               </td>
                               <td className="py-5 px-6">
-                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
-                                  staff.mustChangePassword 
-                                    ? 'bg-amber-50 text-amber-700 border border-amber-200' 
-                                    : 'bg-green-50 text-green-700 border border-green-200'
-                                }`}>
-                                  <span className={`h-2 w-2 rounded-full ${staff.mustChangePassword ? 'bg-amber-500 animate-pulse' : 'bg-green-600'}`} />
-                                  {staff.mustChangePassword ? 'Temporal (DNI)' : 'Clave Segura'}
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
+                                    staff.mustChangePassword
+                                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                      : 'bg-green-50 text-green-700 border border-green-200'
+                                  }`}
+                                >
+                                  <span
+                                    className={`h-2 w-2 rounded-full ${staff.mustChangePassword ? 'bg-amber-500 animate-pulse' : 'bg-green-600'}`}
+                                  />
+                                  {staff.mustChangePassword
+                                    ? 'Temporal (DNI)'
+                                    : 'Clave Segura'}
                                 </span>
                               </td>
                               <td className="py-5 px-6 text-center">
                                 <div className="flex justify-center items-center gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => handleResetPassword(staff.id, 'administrative', staff.dni)}
+                                    onClick={() =>
+                                      handleResetPassword(
+                                        staff.id,
+                                        'administrative',
+                                        staff.dni
+                                      )
+                                    }
                                     title="Restablecer clave del personal al DNI"
                                     className="p-2 rounded-lg bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors cursor-pointer border border-orange-200/50"
                                   >
-                                    <Icon name="lock_reset" className="text-base" />
+                                    <Icon
+                                      name="lock_reset"
+                                      className="text-base"
+                                    />
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => setEditingUser({
-                                      id: staff.id,
-                                      type: 'administrative',
-                                      fields: {
-                                        nombre: staff.nombre || '',
-                                        dni: staff.dni || '',
-                                        email: staff.email || '',
-                                        role: staff.role || 'Staff'
-                                      }
-                                    })}
+                                    onClick={() =>
+                                      setEditingUser({
+                                        id: staff.id,
+                                        type: 'administrative',
+                                        fields: {
+                                          nombre: staff.nombre || '',
+                                          dni: staff.dni || '',
+                                          email: staff.email || '',
+                                          role: staff.role || 'Staff',
+                                        },
+                                      })
+                                    }
                                     title="Editar datos del personal"
                                     className="p-2 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors cursor-pointer border border-indigo-200/50"
                                   >
@@ -1396,42 +1949,76 @@ const AdminPanel = () => {
                     {/* Vista Mobile (Tarjetas) */}
                     <div className="block md:hidden space-y-4 p-4 bg-slate-50/50">
                       {filteredStaff.map((staff) => (
-                        <div key={staff.id} className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm space-y-4 text-left">
+                        <div
+                          key={staff.id}
+                          className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm space-y-4 text-left"
+                        >
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex flex-col gap-1">
-                              <span className="font-bold text-base text-slate-800 leading-tight">{staff.nombre}</span>
-                              <span className="text-xs text-slate-400 font-mono">DNI: {staff.dni || 'No registrado'}</span>
+                              <span className="font-bold text-base text-slate-800 leading-tight">
+                                {staff.nombre}
+                              </span>
+                              <span className="text-xs text-slate-400 font-mono">
+                                DNI: {staff.dni || 'No registrado'}
+                              </span>
                             </div>
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase whitespace-nowrap ${
-                              staff.role === 'user_admin' ? 'bg-red-50 text-red-700 border border-red-200' :
-                              staff.role === 'Administrativo' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
-                              'bg-green-50 text-green-700 border border-green-200'
-                            }`}>
-                              {staff.role === 'user_admin' ? 'Admin' :
-                               staff.role === 'Administrativo' ? 'Admin. Interno' :
-                               'Docente'}
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase whitespace-nowrap ${
+                                staff.role === 'user_admin'
+                                  ? 'bg-red-50 text-red-700 border border-red-200'
+                                  : staff.role === 'Administrativo'
+                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                    : 'bg-green-50 text-green-700 border border-green-200'
+                              }`}
+                            >
+                              {staff.role === 'user_admin'
+                                ? 'Admin'
+                                : staff.role === 'Administrativo'
+                                  ? 'Admin. Interno'
+                                  : 'Docente'}
                             </span>
                           </div>
 
                           <div>
-                            <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[9px]">Correo Electrónico</span>
-                            <span className="text-xs text-slate-700 font-medium">{staff.email}</span>
+                            <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[9px]">
+                              Correo Electrónico
+                            </span>
+                            <span className="text-xs text-slate-700 font-medium">
+                              {staff.email}
+                            </span>
                           </div>
 
                           <div>
-                            <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[9px]">Estado de Credenciales</span>
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold mt-1 ${
-                              staff.mustChangePassword ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-green-50 text-green-700 border border-green-100'
-                            }`}>
-                              <span className={`h-1.5 w-1.5 rounded-full ${staff.mustChangePassword ? 'bg-amber-500 animate-pulse' : 'bg-green-600'}`} />
-                              Clave: {staff.mustChangePassword ? 'Temporal (DNI)' : 'Cambiada / Segura'}
+                            <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[9px]">
+                              Estado de Credenciales
+                            </span>
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold mt-1 ${
+                                staff.mustChangePassword
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-100'
+                                  : 'bg-green-50 text-green-700 border border-green-100'
+                              }`}
+                            >
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${staff.mustChangePassword ? 'bg-amber-500 animate-pulse' : 'bg-green-600'}`}
+                              />
+                              Clave:{' '}
+                              {staff.mustChangePassword
+                                ? 'Temporal (DNI)'
+                                : 'Cambiada / Segura'}
                             </span>
                           </div>
 
                           <div className="flex gap-3 pt-3 border-t border-slate-50">
                             <button
                               type="button"
-                              onClick={() => handleResetPassword(staff.id, 'administrative', staff.dni)}
+                              onClick={() =>
+                                handleResetPassword(
+                                  staff.id,
+                                  'administrative',
+                                  staff.dni
+                                )
+                              }
                               className="flex-1 py-2.5 px-4 rounded-xl bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors cursor-pointer border border-orange-200/50 flex items-center justify-center gap-2 text-xs font-bold"
                             >
                               <Icon name="lock_reset" className="text-sm" />
@@ -1439,16 +2026,18 @@ const AdminPanel = () => {
                             </button>
                             <button
                               type="button"
-                              onClick={() => setEditingUser({
-                                id: staff.id,
-                                type: 'administrative',
-                                fields: {
-                                  nombre: staff.nombre || '',
-                                  dni: staff.dni || '',
-                                  email: staff.email || '',
-                                  role: staff.role || 'Staff'
-                                }
-                              })}
+                              onClick={() =>
+                                setEditingUser({
+                                  id: staff.id,
+                                  type: 'administrative',
+                                  fields: {
+                                    nombre: staff.nombre || '',
+                                    dni: staff.dni || '',
+                                    email: staff.email || '',
+                                    role: staff.role || 'Staff',
+                                  },
+                                })
+                              }
                               className="flex-1 py-2.5 px-4 rounded-xl bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors cursor-pointer border border-indigo-200/50 flex items-center justify-center gap-2 text-xs font-bold"
                             >
                               <Icon name="edit" className="text-sm" />
@@ -1513,10 +2102,14 @@ const AdminPanel = () => {
               <form onSubmit={handleCreateSubmit} className="space-y-8">
                 {/* Tutor Section */}
                 <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-200/60 space-y-4 text-left">
-                  <h3 className="font-label font-bold text-xs uppercase tracking-widest text-slate-500">Datos del Padre/Tutor</h3>
+                  <h3 className="font-label font-bold text-xs uppercase tracking-widest text-slate-500">
+                    Datos del Padre/Tutor
+                  </h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="flex flex-col gap-2">
-                      <label className="text-sm font-semibold text-slate-600">Nombre Completo del Tutor</label>
+                      <label className="text-sm font-semibold text-slate-600">
+                        Nombre Completo del Tutor
+                      </label>
                       <input
                         type="text"
                         placeholder="Ej. Andrés Martínez"
@@ -1527,18 +2120,24 @@ const AdminPanel = () => {
                       />
                     </div>
                     <div className="flex flex-col gap-2">
-                      <label className="text-sm font-semibold text-slate-600">DNI del Tutor</label>
+                      <label className="text-sm font-semibold text-slate-600">
+                        DNI del Tutor
+                      </label>
                       <input
                         type="text"
                         placeholder="Número de DNI"
                         value={parentDni}
-                        onChange={(e) => setParentDni(e.target.value.replace(/\D/g, ''))}
+                        onChange={(e) =>
+                          setParentDni(e.target.value.replace(/\D/g, ''))
+                        }
                         className="px-4 py-3 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm"
                         required
                       />
                     </div>
                     <div className="flex flex-col gap-2">
-                      <label className="text-sm font-semibold text-slate-600">Correo Electrónico</label>
+                      <label className="text-sm font-semibold text-slate-600">
+                        Correo Electrónico
+                      </label>
                       <input
                         type="email"
                         placeholder="tutor@ejemplo.com"
@@ -1554,7 +2153,9 @@ const AdminPanel = () => {
                 {/* Hijos Section */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-label font-bold text-xs uppercase tracking-widest text-slate-500">Estudiantes Vinculados</h3>
+                    <h3 className="font-label font-bold text-xs uppercase tracking-widest text-slate-500">
+                      Estudiantes Vinculados
+                    </h3>
                     <button
                       type="button"
                       onClick={addStudentField}
@@ -1567,7 +2168,10 @@ const AdminPanel = () => {
 
                   <div className="space-y-4">
                     {students.map((student, idx) => (
-                      <div key={idx} className="relative border border-slate-100 p-4 sm:p-6 rounded-2xl bg-white shadow-sm space-y-4 text-left">
+                      <div
+                        key={idx}
+                        className="relative border border-slate-100 p-4 sm:p-6 rounded-2xl bg-white shadow-sm space-y-4 text-left"
+                      >
                         {students.length > 1 && (
                           <button
                             type="button"
@@ -1577,47 +2181,81 @@ const AdminPanel = () => {
                             <Icon name="delete" />
                           </button>
                         )}
-                        
-                        <h4 className="font-label font-bold text-xs text-orange-600">Estudiante #{idx + 1}</h4>
-                        
+
+                        <h4 className="font-label font-bold text-xs text-orange-600">
+                          Estudiante #{idx + 1}
+                        </h4>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                           <div className="flex flex-col gap-2">
-                            <label className="text-xs font-semibold text-slate-600">Nombre Completo</label>
+                            <label className="text-xs font-semibold text-slate-600">
+                              Nombre Completo
+                            </label>
                             <input
                               type="text"
                               placeholder="Ej. Lucas Martínez"
                               value={student.nombre}
-                              onChange={(e) => handleStudentChange(idx, 'nombre', e.target.value)}
+                              onChange={(e) =>
+                                handleStudentChange(
+                                  idx,
+                                  'nombre',
+                                  e.target.value
+                                )
+                              }
                               className="px-4 py-2.5 border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-xs"
                               required
                             />
                           </div>
                           <div className="flex flex-col gap-2">
-                            <label className="text-xs font-semibold text-slate-600">DNI</label>
+                            <label className="text-xs font-semibold text-slate-600">
+                              DNI
+                            </label>
                             <input
                               type="text"
                               placeholder="Número de DNI"
                               value={student.dni}
-                              onChange={(e) => handleStudentChange(idx, 'dni', e.target.value.replace(/\D/g, ''))}
+                              onChange={(e) =>
+                                handleStudentChange(
+                                  idx,
+                                  'dni',
+                                  e.target.value.replace(/\D/g, '')
+                                )
+                              }
                               className="px-4 py-2.5 border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-xs"
                               required
                             />
                           </div>
                           <div className="flex flex-col gap-2">
-                            <label className="text-xs font-semibold text-slate-600">Fecha de Nacimiento</label>
+                            <label className="text-xs font-semibold text-slate-600">
+                              Fecha de Nacimiento
+                            </label>
                             <input
                               type="date"
                               value={student.fechaNacimiento}
-                              onChange={(e) => handleStudentChange(idx, 'fechaNacimiento', e.target.value)}
+                              onChange={(e) =>
+                                handleStudentChange(
+                                  idx,
+                                  'fechaNacimiento',
+                                  e.target.value
+                                )
+                              }
                               className="px-4 py-2.5 border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-xs"
                               required
                             />
                           </div>
                           <div className="flex flex-col gap-2">
-                            <label className="text-xs font-semibold text-slate-600">Nivel Educativo</label>
+                            <label className="text-xs font-semibold text-slate-600">
+                              Nivel Educativo
+                            </label>
                             <select
                               value={student.nivel}
-                              onChange={(e) => handleStudentChange(idx, 'nivel', e.target.value)}
+                              onChange={(e) =>
+                                handleStudentChange(
+                                  idx,
+                                  'nivel',
+                                  e.target.value
+                                )
+                              }
                               className="px-4 py-2.5 border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-xs appearance-none"
                               required
                             >
@@ -1627,10 +2265,18 @@ const AdminPanel = () => {
                             </select>
                           </div>
                           <div className="flex flex-col gap-2">
-                            <label className="text-xs font-semibold text-slate-600">Género</label>
+                            <label className="text-xs font-semibold text-slate-600">
+                              Género
+                            </label>
                             <select
                               value={student.genero || 'Masculino'}
-                              onChange={(e) => handleStudentChange(idx, 'genero', e.target.value)}
+                              onChange={(e) =>
+                                handleStudentChange(
+                                  idx,
+                                  'genero',
+                                  e.target.value
+                                )
+                              }
                               className="px-4 py-2.5 border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-xs appearance-none"
                               required
                             >
@@ -1646,7 +2292,9 @@ const AdminPanel = () => {
                 </div>
 
                 {formError && (
-                  <p className="text-xs text-red-500 font-bold bg-red-50 border border-red-100 p-3.5 rounded-xl text-center">{formError}</p>
+                  <p className="text-xs text-red-500 font-bold bg-red-50 border border-red-100 p-3.5 rounded-xl text-center">
+                    {formError}
+                  </p>
                 )}
 
                 {/* Submit Buttons */}
@@ -1657,9 +2305,25 @@ const AdminPanel = () => {
                 >
                   {isSubmitting ? (
                     <>
-                      <svg className="animate-spin h-5 w-5 mr-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      <svg
+                        className="animate-spin h-5 w-5 mr-3 text-white"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
                       </svg>
                       <span>Creando Cuentas y Vinculando...</span>
                     </>
@@ -1675,10 +2339,14 @@ const AdminPanel = () => {
               <form onSubmit={handleCreateAdminSubmit} className="space-y-8">
                 {/* Personal Section */}
                 <div className="bg-slate-50/50 p-4 sm:p-6 rounded-2xl border border-slate-200/60 space-y-4 text-left">
-                  <h3 className="font-label font-bold text-xs uppercase tracking-widest text-slate-500">Datos del Personal / Administrativo</h3>
+                  <h3 className="font-label font-bold text-xs uppercase tracking-widest text-slate-500">
+                    Datos del Personal / Administrativo
+                  </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="flex flex-col gap-2">
-                      <label className="text-sm font-semibold text-slate-600">Nombre Completo</label>
+                      <label className="text-sm font-semibold text-slate-600">
+                        Nombre Completo
+                      </label>
                       <input
                         type="text"
                         placeholder="Ej. Juan Pérez"
@@ -1689,18 +2357,24 @@ const AdminPanel = () => {
                       />
                     </div>
                     <div className="flex flex-col gap-2">
-                      <label className="text-sm font-semibold text-slate-600">DNI del Personal</label>
+                      <label className="text-sm font-semibold text-slate-600">
+                        DNI del Personal
+                      </label>
                       <input
                         type="text"
                         placeholder="Número de DNI"
                         value={adminDni}
-                        onChange={(e) => setAdminDni(e.target.value.replace(/\D/g, ''))}
+                        onChange={(e) =>
+                          setAdminDni(e.target.value.replace(/\D/g, ''))
+                        }
                         className="px-4 py-3 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm"
                         required
                       />
                     </div>
                     <div className="flex flex-col gap-2">
-                      <label className="text-sm font-semibold text-slate-600">Correo Electrónico</label>
+                      <label className="text-sm font-semibold text-slate-600">
+                        Correo Electrónico
+                      </label>
                       <input
                         type="email"
                         placeholder="juan.perez@ejemplo.com"
@@ -1711,7 +2385,9 @@ const AdminPanel = () => {
                       />
                     </div>
                     <div className="flex flex-col gap-2">
-                      <label className="text-sm font-semibold text-slate-600">Rol Institucional</label>
+                      <label className="text-sm font-semibold text-slate-600">
+                        Rol Institucional
+                      </label>
                       <select
                         value={adminRole}
                         onChange={(e) => setAdminRole(e.target.value)}
@@ -1720,14 +2396,18 @@ const AdminPanel = () => {
                       >
                         <option value="Staff">Docente / Staff</option>
                         <option value="Administrativo">Administrativo</option>
-                        <option value="user_admin">Administrador General</option>
+                        <option value="user_admin">
+                          Administrador General
+                        </option>
                       </select>
                     </div>
                   </div>
                 </div>
 
                 {formError && (
-                  <p className="text-xs text-red-500 font-bold bg-red-50 border border-red-100 p-3.5 rounded-xl text-center">{formError}</p>
+                  <p className="text-xs text-red-500 font-bold bg-red-50 border border-red-100 p-3.5 rounded-xl text-center">
+                    {formError}
+                  </p>
                 )}
 
                 {/* Submit Buttons */}
@@ -1738,9 +2418,25 @@ const AdminPanel = () => {
                 >
                   {isSubmitting ? (
                     <>
-                      <svg className="animate-spin h-5 w-5 mr-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      <svg
+                        className="animate-spin h-5 w-5 mr-3 text-white"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
                       </svg>
                       <span>Creando Cuenta...</span>
                     </>
@@ -1779,11 +2475,15 @@ const AdminPanel = () => {
               <h3 className="font-headline text-2xl font-bold text-slate-800 flex items-center gap-2">
                 <Icon name="edit" className="text-orange-500" />
                 <span>
-                  Editar {editingUser.type === 'student' ? 'Estudiante' : 
-                          editingUser.type === 'parent' ? 'Tutor' : 'Personal'}
+                  Editar{' '}
+                  {editingUser.type === 'student'
+                    ? 'Estudiante'
+                    : editingUser.type === 'parent'
+                      ? 'Tutor'
+                      : 'Personal'}
                 </span>
               </h3>
-              <button 
+              <button
                 onClick={() => setEditingUser(null)}
                 className="text-slate-400 hover:text-slate-600 transition-colors border-none bg-transparent cursor-pointer"
               >
@@ -1795,43 +2495,62 @@ const AdminPanel = () => {
               {editingUser.type === 'student' && (
                 <>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nombre Completo</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      Nombre Completo
+                    </label>
                     <input
                       type="text"
                       value={editingUser.fields.nombre || ''}
-                      onChange={(e) => handleEditFieldChange('nombre', e.target.value)}
+                      onChange={(e) =>
+                        handleEditFieldChange('nombre', e.target.value)
+                      }
                       className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm"
                       required
                     />
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">DNI</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      DNI
+                    </label>
                     <input
                       type="text"
                       value={editingUser.fields.dni || ''}
-                      onChange={(e) => handleEditFieldChange('dni', e.target.value.replace(/\D/g, ''))}
+                      onChange={(e) =>
+                        handleEditFieldChange(
+                          'dni',
+                          e.target.value.replace(/\D/g, '')
+                        )
+                      }
                       className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm"
                       required
                     />
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Fecha de Nacimiento</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      Fecha de Nacimiento
+                    </label>
                     <input
                       type="date"
                       value={editingUser.fields.fechaNacimiento || ''}
-                      onChange={(e) => handleEditFieldChange('fechaNacimiento', e.target.value)}
+                      onChange={(e) =>
+                        handleEditFieldChange('fechaNacimiento', e.target.value)
+                      }
                       className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm"
                       required
                     />
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nivel Educativo</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      Nivel Educativo
+                    </label>
                     <select
                       value={editingUser.fields.nivel || 'inicial'}
-                      onChange={(e) => handleEditFieldChange('nivel', e.target.value)}
+                      onChange={(e) =>
+                        handleEditFieldChange('nivel', e.target.value)
+                      }
                       className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
                       required
                     >
@@ -1842,10 +2561,14 @@ const AdminPanel = () => {
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Género</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      Género
+                    </label>
                     <select
                       value={editingUser.fields.genero || 'Masculino'}
-                      onChange={(e) => handleEditFieldChange('genero', e.target.value)}
+                      onChange={(e) =>
+                        handleEditFieldChange('genero', e.target.value)
+                      }
                       className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
                       required
                     >
@@ -1857,36 +2580,52 @@ const AdminPanel = () => {
                 </>
               )}
 
-              {(editingUser.type === 'parent' || editingUser.type === 'administrative') && (
+              {(editingUser.type === 'parent' ||
+                editingUser.type === 'administrative') && (
                 <>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nombre Completo</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      Nombre Completo
+                    </label>
                     <input
                       type="text"
                       value={editingUser.fields.nombre || ''}
-                      onChange={(e) => handleEditFieldChange('nombre', e.target.value)}
+                      onChange={(e) =>
+                        handleEditFieldChange('nombre', e.target.value)
+                      }
                       className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm"
                       required
                     />
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">DNI</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      DNI
+                    </label>
                     <input
                       type="text"
                       value={editingUser.fields.dni || ''}
-                      onChange={(e) => handleEditFieldChange('dni', e.target.value.replace(/\D/g, ''))}
+                      onChange={(e) =>
+                        handleEditFieldChange(
+                          'dni',
+                          e.target.value.replace(/\D/g, '')
+                        )
+                      }
                       className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm"
                       required
                     />
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Correo Electrónico</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      Correo Electrónico
+                    </label>
                     <input
                       type="email"
                       value={editingUser.fields.email || ''}
-                      onChange={(e) => handleEditFieldChange('email', e.target.value)}
+                      onChange={(e) =>
+                        handleEditFieldChange('email', e.target.value)
+                      }
                       className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm"
                       required
                     />
@@ -1894,16 +2633,22 @@ const AdminPanel = () => {
 
                   {editingUser.type === 'administrative' && (
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Rol Institucional</label>
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        Rol Institucional
+                      </label>
                       <select
                         value={editingUser.fields.role || 'Staff'}
-                        onChange={(e) => handleEditFieldChange('role', e.target.value)}
+                        onChange={(e) =>
+                          handleEditFieldChange('role', e.target.value)
+                        }
                         className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
                         required
                       >
                         <option value="Staff">Docente / Staff</option>
                         <option value="Administrativo">Administrativo</option>
-                        <option value="user_admin">Administrador General</option>
+                        <option value="user_admin">
+                          Administrador General
+                        </option>
                       </select>
                     </div>
                   )}
@@ -1949,22 +2694,32 @@ const AdminPanel = () => {
 
             <form onSubmit={handleEditMateriaSubmit} className="space-y-6">
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nombre de la Materia</label>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Nombre de la Materia
+                </label>
                 <select
                   value={materiaEditForm.nombre || ''}
-                  onChange={(e) => handleEditMateriaFieldChange('nombre', e.target.value)}
+                  onChange={(e) =>
+                    handleEditMateriaFieldChange('nombre', e.target.value)
+                  }
                   className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
                   required
                 >
-                  <option value="" disabled>Seleccionar materia...</option>
+                  <option value="" disabled>
+                    Seleccionar materia...
+                  </option>
                   {opcionesMateriaEdicion.map((mat) => (
-                    <option key={mat} value={mat}>{mat}</option>
+                    <option key={mat} value={mat}>
+                      {mat}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Nivel Educativo</label>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Nivel Educativo
+                </label>
                 <select
                   value={materiaEditForm.nivel || 'inicial'}
                   onChange={(e) => {
@@ -1981,10 +2736,14 @@ const AdminPanel = () => {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Profesor a Cargo</label>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Profesor a Cargo
+                </label>
                 <select
                   value={materiaEditForm.profesorUid || ''}
-                  onChange={(e) => handleEditMateriaFieldChange('profesorUid', e.target.value)}
+                  onChange={(e) =>
+                    handleEditMateriaFieldChange('profesorUid', e.target.value)
+                  }
                   className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:bg-white focus:outline-none transition-all text-sm appearance-none"
                 >
                   <option value="">Sin asignar</option>
@@ -1992,14 +2751,17 @@ const AdminPanel = () => {
                     .filter((u) => ['Staff'].includes(u.role))
                     .map((prof) => (
                       <option key={prof.id} value={prof.id}>
-                        {prof.nombre || prof.email} {prof.dni ? `| DNI ${prof.dni}` : ''}
+                        {prof.nombre || prof.email}{' '}
+                        {prof.dni ? `| DNI ${prof.dni}` : ''}
                       </option>
                     ))}
                 </select>
               </div>
 
               {materiaEditError && (
-                <p className="text-xs text-red-500 font-bold bg-red-50 border border-red-100 p-3 rounded-xl">{materiaEditError}</p>
+                <p className="text-xs text-red-500 font-bold bg-red-50 border border-red-100 p-3 rounded-xl">
+                  {materiaEditError}
+                </p>
               )}
 
               <div className="flex gap-3 pt-4">
@@ -2043,18 +2805,28 @@ const AdminPanel = () => {
             <form onSubmit={handleSaveMateriaStudents} className="space-y-6">
               <div className="flex items-center justify-between text-xs text-slate-500 font-bold">
                 <span className="uppercase tracking-wider">
-                  Nivel: <b className="text-slate-700">{(managingMateriaStudents.nivel || 'inicial').toUpperCase()}</b>
+                  Nivel:{' '}
+                  <b className="text-slate-700">
+                    {(managingMateriaStudents.nivel || 'inicial').toUpperCase()}
+                  </b>
                 </span>
-                <span><b className="text-orange-600">{materiaStudentsSelected.length}</b> seleccionados</span>
+                <span>
+                  <b className="text-orange-600">
+                    {materiaStudentsSelected.length}
+                  </b>{' '}
+                  seleccionados
+                </span>
               </div>
 
               <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
-                {getMateriaLevelStudents(managingMateriaStudents).length === 0 ? (
+                {getMateriaLevelStudents(managingMateriaStudents).length ===
+                0 ? (
                   <p className="text-sm text-slate-400 bg-slate-50 border border-slate-100 rounded-xl p-4 text-center">
-                    No hay alumnos registrados en el nivel {(managingMateriaStudents.nivel || 'inicial')}.
+                    No hay alumnos registrados en el nivel{' '}
+                    {managingMateriaStudents.nivel || 'inicial'}.
                   </p>
                 ) : (
-                  getMateriaLevelStudents(managingMateriaStudents).map(s => (
+                  getMateriaLevelStudents(managingMateriaStudents).map((s) => (
                     <label
                       key={s.id}
                       className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
@@ -2070,7 +2842,9 @@ const AdminPanel = () => {
                         className="h-4 w-4 accent-orange-500 cursor-pointer"
                       />
                       <div className="flex-1 flex flex-col gap-0.5">
-                        <span className="font-semibold text-sm text-slate-700">{s.nombre}</span>
+                        <span className="font-semibold text-sm text-slate-700">
+                          {s.nombre}
+                        </span>
                         <span className="text-xs text-slate-400 font-mono">
                           {s.studentID_login || 'Sin ID'} · DNI {s.dni}
                         </span>
@@ -2081,7 +2855,9 @@ const AdminPanel = () => {
               </div>
 
               {materiaStudentsError && (
-                <p className="text-xs text-red-500 font-bold bg-red-50 border border-red-100 p-3 rounded-xl">{materiaStudentsError}</p>
+                <p className="text-xs text-red-500 font-bold bg-red-50 border border-red-100 p-3 rounded-xl">
+                  {materiaStudentsError}
+                </p>
               )}
 
               <div className="flex gap-3 pt-4">
@@ -2097,7 +2873,9 @@ const AdminPanel = () => {
                   disabled={isSavingMateriaStudents}
                   className="flex-1 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold text-sm rounded-full shadow-lg shadow-orange-600/10 transition-all cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed border-none"
                 >
-                  {isSavingMateriaStudents ? 'Guardando...' : 'Guardar Inscripciones'}
+                  {isSavingMateriaStudents
+                    ? 'Guardando...'
+                    : 'Guardar Inscripciones'}
                 </button>
               </div>
             </form>

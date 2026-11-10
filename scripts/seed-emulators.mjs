@@ -4,7 +4,8 @@
 // Carga datos de prueba SOLO en los emuladores locales usando el
 // Admin SDK (solo tiene sentido apuntando a emuladores locales).
 //   Auth      -> 127.0.0.1:9099  (admin, docente, tutores + claims)
-//   Firestore -> 127.0.0.1:8080  (alumnos, tutores, materias, calificaciones)
+//   Firestore -> 127.0.0.1:8080  (alumnos, tutores, materias, calificaciones,
+//                                 deportes, recorridos, cuotas y pagos)
 // Requisito: los emuladores deben estar corriendo (`npm run emulators`).
 // Uso:       npm run seed:emulators
 // ============================================================
@@ -467,6 +468,205 @@ async function main() {
   }
   console.log(`  ✓ ${cantAsistencias} registros de asistencia`);
 
+  // 7) DEPORTES, RECORRIDOS, CUOTAS Y PAGOS (Firestore emulator)
+  // Catálogo canónico: debe coincidir con functions/src/pagos.ts (cf_seedCuotas).
+  console.log('\n[Firestore] Generando deportes, recorridos, cuotas y pagos...');
+  const DEPORTES_SEED = [
+    {
+      id: 'dep-futbol',
+      nombre: 'Fútbol',
+      nivel: 'primaria',
+      horario: 'Martes y Jueves 17:00 a 18:30',
+      profesorNombre: 'Prof. Diego Sosa',
+      arancel: 15000,
+    },
+    {
+      id: 'dep-natacion',
+      nombre: 'Natación',
+      nivel: 'secundaria',
+      horario: 'Lunes y Miércoles 18:30 a 20:00',
+      profesorNombre: 'Prof. Laura Benítez',
+      arancel: 18000,
+    },
+    {
+      id: 'dep-basquet',
+      nombre: 'Básquet',
+      nivel: 'secundaria',
+      horario: 'Martes y Viernes 19:00 a 20:30',
+      profesorNombre: 'Prof. Marcos Pereyra',
+      arancel: 16000,
+    },
+    {
+      id: 'dep-voleibol',
+      nombre: 'Voleibol',
+      nivel: 'inicial',
+      horario: 'Sábados 10:00 a 11:30',
+      profesorNombre: 'Prof. Carla Ledesma',
+      arancel: 12000,
+    },
+  ];
+  const RECORRIDOS_SEED = [
+    {
+      id: 'rec-norte',
+      nombre: 'Recorrido Norte',
+      zona: 'Zona Norte',
+      descripcion: 'Av. Central, Barrio Los Álamos, Plaza Norte',
+      arancel: 9000,
+    },
+    {
+      id: 'rec-sur',
+      nombre: 'Recorrido Sur',
+      zona: 'Zona Sur',
+      descripcion: 'Ruta 9 km 4, Barrio San José, Terminal',
+      arancel: 10000,
+    },
+    {
+      id: 'rec-centro',
+      nombre: 'Recorrido Centro',
+      zona: 'Centro',
+      descripcion: 'Microcentro, Municipalidad, Estación Central',
+      arancel: 8500,
+    },
+  ];
+  const IMPORTE_MENSUAL = 45000;
+  const DIA_VENCIMIENTO = 10;
+
+  for (const deporte of DEPORTES_SEED) {
+    await db.collection('deportes').doc(deporte.id).set({
+      ...deporte,
+      activo: true,
+      updatedAt: null,
+    });
+    console.log(`  ✓ Deporte: ${deporte.nombre} (${deporte.nivel}) - ${deporte.horario}`);
+  }
+  for (const recorrido of RECORRIDOS_SEED) {
+    await db.collection('recorridos').doc(recorrido.id).set({
+      ...recorrido,
+      activo: true,
+      updatedAt: null,
+    });
+    console.log(`  ✓ Recorrido: ${recorrido.nombre} (${recorrido.zona})`);
+  }
+
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const hoy = new Date();
+  const hoyISO = `${hoy.getFullYear()}-${pad2(hoy.getMonth() + 1)}-${pad2(hoy.getDate())}`;
+  const mesActual = hoy.getMonth() + 1;
+  const vencimientoDe = (anio, mes) => `${anio}-${pad2(mes)}-${pad2(DIA_VENCIMIENTO)}`;
+  // Estados del mes actual por alumno: 0 = pago completo, 1 = pago parcial, 2 = pendiente.
+  const calcularPagoSeed = (index, anio, mes, importe) => {
+    const clave = `${anio}-${pad2(mes)}`;
+    const claveActual = `${hoy.getFullYear()}-${pad2(mesActual)}`;
+    if (clave < claveActual) {
+      return {
+        importe,
+        fechaPagoISO: `${anio}-${pad2(mes)}-05`,
+        medioPago: 'transferencia',
+      };
+    }
+    if (clave === claveActual) {
+      const modo = index % 3;
+      if (modo === 0)
+        return { importe, fechaPagoISO: hoyISO, medioPago: 'transferencia' };
+      if (modo === 1)
+        return {
+          importe: Math.round(importe / 2),
+          fechaPagoISO: hoyISO,
+          medioPago: 'efectivo',
+        };
+    }
+    return null;
+  };
+
+  const alumnosLista = Object.entries(alumnos);
+  let cantCuotas = 0;
+  let cantPagos = 0;
+  for (let index = 0; index < alumnosLista.length; index++) {
+    const [docId, base] = alumnosLista[index];
+    const tutor = tutores[base.tutor];
+    const deporte = DEPORTES_SEED.find((d) => d.nivel === base.nivel) || null;
+    const recorrido = RECORRIDOS_SEED[index % RECORRIDOS_SEED.length];
+
+    for (let mes = 1; mes <= mesActual; mes++) {
+      const conceptos = [
+        {
+          key: 'mensual',
+          concepto: 'mensual',
+          descripcion: 'Cuota mensual',
+          importe: IMPORTE_MENSUAL,
+        },
+      ];
+      if (deporte) {
+        conceptos.push({
+          key: `deporte-${deporte.id}`,
+          concepto: 'deporte',
+          descripcion: `Deporte: ${deporte.nombre}`,
+          importe: deporte.arancel,
+          deporteId: deporte.id,
+          deporteNombre: deporte.nombre,
+        });
+      }
+      if (recorrido) {
+        conceptos.push({
+          key: `transporte-${recorrido.id}`,
+          concepto: 'transporte',
+          descripcion: `Transporte: ${recorrido.nombre}`,
+          importe: recorrido.arancel,
+          recorridoId: recorrido.id,
+          recorridoNombre: recorrido.nombre,
+        });
+      }
+
+      for (const concepto of conceptos) {
+        const cuotaId = `${docId}_${anioLectivo}_${pad2(mes)}_${concepto.key}`;
+        await db.collection('cuotas').doc(cuotaId).set({
+          studentId: docId,
+          parentUid: tutor.uid,
+          alumnoNombre: base.nombre,
+          anio: anioLectivo,
+          mes,
+          concepto: concepto.concepto,
+          descripcion: concepto.descripcion,
+          deporteId: concepto.deporteId || null,
+          deporteNombre: concepto.deporteNombre || null,
+          recorridoId: concepto.recorridoId || null,
+          recorridoNombre: concepto.recorridoNombre || null,
+          nivel: base.nivel,
+          importe: concepto.importe,
+          vencimientoISO: vencimientoDe(anioLectivo, mes),
+          createdAt: null,
+        });
+        cantCuotas++;
+
+        const pago = calcularPagoSeed(index, anioLectivo, mes, concepto.importe);
+        if (pago) {
+          await db.collection('pagos').doc(`${cuotaId}_p1`).set({
+            cuotaId,
+            studentId: docId,
+            parentUid: tutor.uid,
+            anio: anioLectivo,
+            mes,
+            concepto: concepto.concepto,
+            descripcion: concepto.descripcion,
+            importe: pago.importe,
+            fechaPagoISO: pago.fechaPagoISO,
+            fechaPago: Timestamp.fromDate(
+              new Date(`${pago.fechaPagoISO}T12:00:00.000Z`)
+            ),
+            medioPago: pago.medioPago,
+            observacion: '',
+            registradoPor: adminAuth,
+            createdAt: null,
+          });
+          cantPagos++;
+        }
+      }
+    }
+  }
+  console.log(
+    `  ✓ ${cantCuotas} cuotas y ${cantPagos} pagos del ${anioLectivo} (meses 1 a ${mesActual})`
+  );
+
   // Datos extendidos de cada tutor en la colección `users` (para el panel admin)
   for (const tutor of tutores) {
     await db.collection('users').doc(tutor.uid).set({
@@ -523,6 +723,7 @@ async function main() {
   console.log(`  Horarios cargados: ${cantHorarios}`);
   console.log(`  Materiales cargados: ${cantMateriales}`);
   console.log(`  Asistencias cargadas: ${cantAsistencias}`);
+  console.log(`  Cuotas cargadas: ${cantCuotas} / Pagos cargados: ${cantPagos}`);
   console.log('------------------------------------------------------------');
 }
 

@@ -36,3 +36,5 @@ functions/lib/
 cypress/videos/
 cypress/screenshots/
 cypress/downloads/
+
+docs/expo-mobile-app.md

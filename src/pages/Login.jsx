@@ -66,6 +66,8 @@ const Login = () => {
         navigate('/panel-docente');
       } else if (user.role === 'Estudiante') {
         navigate('/panel-alumno');
+      } else if (user.role === 'Padre' || user.role === 'Padre/Tutor') {
+        navigate('/panel-tutor');
       }
     }
   }, [isLoggedIn, user, navigate]);

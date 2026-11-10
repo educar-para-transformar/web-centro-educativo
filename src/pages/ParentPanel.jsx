@@ -4,8 +4,16 @@ import Navbar from '../components/Navbar';
 import Icon from '../components/atoms/Icon';
 import EventCard from '../components/molecules/EventCard';
 import { schoolEvents } from '../services/schoolEvents';
+import { images } from '../services/imagesConfig';
 import { auth, db } from '../services/firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  where,
+} from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import '../styles/StudentPanel.css';
 
@@ -165,6 +173,49 @@ const formatFechaNovedad = (valor) => {
   });
 };
 
+const resolveNewsImage = (valor) => {
+  if (!valor) return null;
+  return images[valor] || valor;
+};
+
+const adaptBoletin = (data) => {
+  const materias = Array.isArray(data?.materias) ? data.materias : [];
+  const trimestres = TRIMESTRES.map((trimestre) => {
+    const filas = materias
+      .map((materia) => {
+        const item = (materia.trimestres || []).find(
+          (trim) => Number(trim.trimestre) === trimestre
+        );
+        return {
+          materiaId: materia.materiaId,
+          materiaNombre: materia.materia || 'Materia',
+          notas: Array.isArray(item?.notas) ? item.notas : [],
+          promedio: item?.promedio ?? null,
+          observaciones: '',
+        };
+      })
+      .filter((fila) => fila.notas.length > 0);
+
+    const evaluadas = filas.filter((fila) => Number(fila.promedio) > 0);
+    const promedio =
+      evaluadas.length > 0
+        ? Math.round(
+            (evaluadas.reduce((acc, fila) => acc + Number(fila.promedio), 0) /
+              evaluadas.length) *
+              100
+          ) / 100
+        : null;
+
+    return { trimestre, materias: filas, promedio };
+  }).filter((trimestre) => trimestre.materias.length > 0);
+
+  return {
+    ...data,
+    trimestres,
+    aniosDisponibles: data?.anio ? [data.anio] : [currentYear],
+  };
+};
+
 const ParentPanel = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -261,24 +312,42 @@ const ParentPanel = () => {
     cargarHijos();
   }, [cargarHijos]);
 
+  const cargarAniosDisponibles = useCallback(async () => {
+    if (!selectedHijoId) return;
+    try {
+      const snapshot = await getDocs(
+        query(
+          collection(db, 'calificaciones'),
+          where('studentId', '==', selectedHijoId)
+        )
+      );
+      const anios = new Set([currentYear]);
+      snapshot.forEach((doc) => {
+        const anio = Number(doc.data()?.anio);
+        if (Number.isInteger(anio) && anio >= 2000 && anio <= 2100) {
+          anios.add(anio);
+        }
+      });
+      setAniosDisponibles([...anios].sort((a, b) => b - a));
+    } catch (err) {
+      console.error('Error detectando años con calificaciones:', err);
+    }
+  }, [selectedHijoId]);
+
   const cargarBoletin = useCallback(async () => {
     if (!selectedHijoId) return;
     setIsLoading(true);
     setError('');
     try {
       const data = await fetchStudentData(
-        `cf_getBoletin?studentId=${encodeURIComponent(selectedHijoId)}&anio=${selectedAnio}`
+        `cf_getStudentGrades?studentId=${encodeURIComponent(selectedHijoId)}&anio=${selectedAnio}`
       );
-      setBoletin(data);
-      if (
-        Array.isArray(data?.aniosDisponibles) &&
-        data.aniosDisponibles.length > 0
-      ) {
-        setAniosDisponibles(data.aniosDisponibles);
-        if (!data.aniosDisponibles.includes(selectedAnio)) {
-          setSelectedAnio(data.aniosDisponibles[0]);
-        }
-      }
+      const adaptado = adaptBoletin(data);
+      setBoletin(adaptado);
+      setAniosDisponibles((prev) => {
+        const merged = new Set([...prev, ...adaptado.aniosDisponibles]);
+        return [...merged].sort((a, b) => b - a);
+      });
     } catch (err) {
       console.error(err);
       setError(err.message || 'Error al cargar el boletín.');
@@ -293,10 +362,18 @@ const ParentPanel = () => {
     setIsLoadingMaterias(true);
     setMateriasError('');
     try {
-      const data = await fetchStudentData(
-        `cf_getMaterias?studentId=${encodeURIComponent(selectedHijoId)}&anio=${selectedAnio}`
+      const snapshot = await getDocs(
+        query(
+          collection(db, 'materias'),
+          where('studentIds', 'array-contains', selectedHijoId)
+        )
       );
-      setMisMaterias(Array.isArray(data?.materias) ? data.materias : []);
+      setMisMaterias(
+        snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }))
+      );
     } catch (err) {
       console.error(err);
       setMateriasError(err.message || 'Error al cargar las materias.');
@@ -304,17 +381,30 @@ const ParentPanel = () => {
     } finally {
       setIsLoadingMaterias(false);
     }
-  }, [selectedHijoId, selectedAnio]);
+  }, [selectedHijoId]);
 
   const cargarNoticias = useCallback(async () => {
-    if (!selectedHijoId) return;
     setIsLoadingNoticias(true);
     setNoticiasError('');
     try {
-      const data = await fetchStudentData(
-        `cf_getNoticias?studentId=${encodeURIComponent(selectedHijoId)}&anio=${selectedAnio}`
+      const snapshot = await getDocs(
+        query(collection(db, 'news'), orderBy('createdAt', 'desc'), limit(3))
       );
-      setNoticias(Array.isArray(data?.noticias) ? data.noticias : []);
+      setNoticias(
+        snapshot.docs.map((doc) => {
+          const data = doc.data() || {};
+          return {
+            id: doc.id,
+            titulo: data.title || data.titulo || 'Novedad',
+            contenido:
+              data.subtitle || data.contenido || data.descripcion || '',
+            imagen: resolveNewsImage(
+              data.image || data.imagen || data.imagenUrl
+            ),
+            fecha: data.createdAt || data.fecha || null,
+          };
+        })
+      );
     } catch (err) {
       console.error(err);
       setNoticiasError(err.message || 'Error al cargar las novedades.');
@@ -322,7 +412,7 @@ const ParentPanel = () => {
     } finally {
       setIsLoadingNoticias(false);
     }
-  }, [selectedHijoId, selectedAnio]);
+  }, []);
 
   const cargarAsistencias = useCallback(async () => {
     if (!selectedHijoId) return;
@@ -330,10 +420,21 @@ const ParentPanel = () => {
     setAsistenciasError('');
     try {
       const data = await fetchStudentData(
-        `cf_getAsistencias?studentId=${encodeURIComponent(selectedHijoId)}&anio=${selectedAnio}`
+        `cf_getStudentAttendance?studentId=${encodeURIComponent(selectedHijoId)}&anio=${selectedAnio}`
       );
       setAsistencias(Array.isArray(data?.asistencias) ? data.asistencias : []);
-      setResumenAsistencias(data?.resumen || null);
+      const resumen = data?.resumen;
+      setResumenAsistencias(
+        resumen
+          ? {
+              total: Number(resumen.total) || 0,
+              presentes: Number(resumen.presente) || 0,
+              ausentes: Number(resumen.ausente) || 0,
+              tardes: Number(resumen.tarde) || 0,
+              justificados: Number(resumen.justificada) || 0,
+            }
+          : null
+      );
     } catch (err) {
       console.error(err);
       setAsistenciasError(err.message || 'Error al cargar las asistencias.');
@@ -350,7 +451,7 @@ const ParentPanel = () => {
     setHorariosError('');
     try {
       const data = await fetchStudentData(
-        `cf_getHorarios?studentId=${encodeURIComponent(selectedHijoId)}&anio=${selectedAnio}`
+        `cf_getStudentSchedule?studentId=${encodeURIComponent(selectedHijoId)}&anio=${selectedAnio}`
       );
       setHorarios(Array.isArray(data?.horarios) ? data.horarios : []);
     } catch (err) {
@@ -368,7 +469,7 @@ const ParentPanel = () => {
     setMaterialesError('');
     try {
       const data = await fetchStudentData(
-        `cf_getMateriales?studentId=${encodeURIComponent(selectedHijoId)}&anio=${selectedAnio}`
+        `cf_getStudentMaterials?studentId=${encodeURIComponent(selectedHijoId)}&anio=${selectedAnio}`
       );
       setMateriales(Array.isArray(data?.materiales) ? data.materiales : []);
     } catch (err) {
@@ -379,6 +480,10 @@ const ParentPanel = () => {
       setIsLoadingMateriales(false);
     }
   }, [selectedHijoId, selectedAnio]);
+
+  useEffect(() => {
+    cargarAniosDisponibles();
+  }, [cargarAniosDisponibles]);
 
   useEffect(() => {
     if (!selectedHijoId) return;
@@ -642,9 +747,9 @@ const ParentPanel = () => {
                 <h3 className="font-headline font-semibold text-slate-800 truncate">
                   {materia.materiaNombre || materia.nombre}
                 </h3>
-                {materia.docenteNombre && (
+                {(materia.profesorNombre || materia.docenteNombre) && (
                   <p className="text-sm text-slate-500 mt-1">
-                    Docente: {materia.docenteNombre}
+                    Docente: {materia.profesorNombre || materia.docenteNombre}
                   </p>
                 )}
                 {materia.curso && (
@@ -735,9 +840,9 @@ const ParentPanel = () => {
                         <p className="font-medium text-slate-800">
                           {formatFecha(asis.fecha)}
                         </p>
-                        {asis.materiaNombre && (
+                        {(asis.materia || asis.materiaNombre) && (
                           <p className="text-sm text-slate-500">
-                            {asis.materiaNombre}
+                            {asis.materia || asis.materiaNombre}
                           </p>
                         )}
                       </div>
@@ -812,9 +917,9 @@ const ParentPanel = () => {
                     <p className="font-medium text-slate-800">
                       {item.materiaNombre || item.materia || 'Materia'}
                     </p>
-                    {item.docenteNombre && (
+                    {(item.docente || item.docenteNombre) && (
                       <p className="text-sm text-slate-500">
-                        {item.docenteNombre}
+                        {item.docente || item.docenteNombre}
                       </p>
                     )}
                   </div>
@@ -894,9 +999,9 @@ const ParentPanel = () => {
                     {mat.descripcion}
                   </p>
                 )}
-                {mat.materiaNombre && (
+                {(mat.materia || mat.materiaNombre) && (
                   <p className="text-xs text-slate-400 mt-2">
-                    {mat.materiaNombre}
+                    {mat.materia || mat.materiaNombre}
                   </p>
                 )}
               </div>
