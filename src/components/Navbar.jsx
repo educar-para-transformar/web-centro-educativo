@@ -22,6 +22,8 @@ const Navbar = ({ noButtons = false }) => {
   const isAdmin = isLoggedIn && user?.role === 'user_admin';
   const isStudent = isLoggedIn && user?.role === 'Estudiante';
   const isTeacher = isLoggedIn && user?.role === 'Staff';
+  const isParent =
+    isLoggedIn && (user?.role === 'Padre' || user?.role === 'Padre/Tutor');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Disable body scroll when mobile menu is open
@@ -62,6 +64,7 @@ const Navbar = ({ noButtons = false }) => {
               isAdmin={isAdmin}
               isStudent={isStudent}
               isTeacher={isTeacher}
+              isParent={isParent}
             />
           ) : (
             <Button variant="primary" onClick={() => navigate('/login')}>
@@ -107,6 +110,7 @@ const Navbar = ({ noButtons = false }) => {
             isAdmin={isAdmin}
             isStudent={isStudent}
             isTeacher={isTeacher}
+            isParent={isParent}
           />
         )}
       </div>
@@ -198,6 +202,7 @@ const UserMenu = ({
   isAdmin,
   isStudent,
   isTeacher,
+  isParent,
 }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
@@ -300,6 +305,21 @@ const UserMenu = ({
               Mis materias
             </button>
           )}
+          {isParent && (
+            <button
+              type="button"
+              onClick={() => {
+                navigate('/panel-tutor');
+                setIsUserMenuOpen(false);
+              }}
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors text-sm font-semibold cursor-pointer text-left focus:outline-none"
+            >
+              <span className="material-symbols-outlined text-slate-400 text-lg">
+                family_restroom
+              </span>
+              Panel del tutor
+            </button>
+          )}
           <div className="border-t border-slate-100 my-1"></div>
           <button
             type="button"
@@ -335,6 +355,7 @@ const MobileDrawer = ({
   isAdmin,
   isStudent,
   isTeacher,
+  isParent,
 }) => {
   return (
     <div className={`navbar-mobile-drawer ${isOpen ? 'open' : ''}`}>
@@ -515,6 +536,21 @@ const MobileDrawer = ({
                     menu_book
                   </span>
                   Mis materias
+                </button>
+              )}
+              {isParent && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate('/panel-tutor');
+                    onClose();
+                  }}
+                  className="mobile-action-btn profile-btn"
+                >
+                  <span className="material-symbols-outlined text-lg">
+                    family_restroom
+                  </span>
+                  Panel del tutor
                 </button>
               )}
               <button
