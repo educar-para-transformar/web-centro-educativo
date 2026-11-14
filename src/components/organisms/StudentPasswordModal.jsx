@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Icon from '../atoms/Icon';
 import { useAuth } from '../../context/AuthContext';
 
@@ -15,6 +15,7 @@ const StudentPasswordModal = ({ isOpen, onClose }) => {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const firstInputRef = useRef(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -27,14 +28,25 @@ const StudentPasswordModal = ({ isOpen, onClose }) => {
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) return undefined;
 
+    const previousOverflow = document.body.style.overflow;
+    const focusTimer = window.setTimeout(
+      () => firstInputRef.current?.focus(),
+      0
+    );
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') onClose();
     };
 
+    document.body.style.overflow = 'hidden';
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.clearTimeout(focusTimer);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
@@ -140,7 +152,14 @@ const StudentPasswordModal = ({ isOpen, onClose }) => {
                     value={newPassword}
                     onChange={(event) => setNewPassword(event.target.value)}
                     placeholder="Mínimo 6 caracteres"
+                    autoComplete="new-password"
+                    minLength={6}
                     required
+                    ref={firstInputRef}
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={
+                      error ? 'student-password-error' : undefined
+                    }
                     className="w-full px-4 py-3 pr-12 bg-slate-50 border-2 border-slate-200 rounded-xl focus:bg-white focus:border-orange-500 focus:outline-none transition-colors text-sm"
                   />
                   <button
@@ -172,14 +191,24 @@ const StudentPasswordModal = ({ isOpen, onClose }) => {
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   placeholder="Repetí la nueva contraseña"
+                  autoComplete="new-password"
+                  minLength={6}
                   required
+                  aria-describedby={
+                    error ? 'student-password-error' : undefined
+                  }
                   className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:bg-white focus:border-orange-500 focus:outline-none transition-colors text-sm"
                 />
               </div>
             </div>
 
             {error && (
-              <p className="mt-4 text-sm text-red-700 font-semibold bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+              <p
+                id="student-password-error"
+                role="alert"
+                aria-live="assertive"
+                className="mt-4 text-sm text-red-700 font-semibold bg-red-50 border border-red-200 rounded-xl px-3 py-2"
+              >
                 {error}
               </p>
             )}

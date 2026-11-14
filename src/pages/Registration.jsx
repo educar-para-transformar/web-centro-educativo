@@ -65,7 +65,7 @@ const Registration = () => {
 
   const handleChange = (campo, valor) => {
     let nuevoValor = valor;
-    
+
     if (campo === 'dniTutor' || campo === 'dniAlumno') {
       nuevoValor = valor.replace(/\D/g, ''); // Solo números
     }
@@ -85,10 +85,13 @@ const Registration = () => {
       if (!datosFormulario.nombreTutor.trim()) {
         e.nombreTutor = 'El campo es obligatorio';
       }
-      
+
       if (!datosFormulario.dniTutor.trim()) {
         e.dniTutor = 'El campo es obligatorio';
-      } else if (datosFormulario.dniTutor.length < 7 || datosFormulario.dniTutor.length > 9) {
+      } else if (
+        datosFormulario.dniTutor.length < 7 ||
+        datosFormulario.dniTutor.length > 9
+      ) {
         e.dniTutor = 'El DNI debe tener entre 7 y 9 números';
       }
 
@@ -105,7 +108,8 @@ const Registration = () => {
       }
     }
     if (pasoActual === 3) {
-      if (!datosFormulario.nombreAlumno.trim()) e.nombreAlumno = 'El campo es obligatorio';
+      if (!datosFormulario.nombreAlumno.trim())
+        e.nombreAlumno = 'El campo es obligatorio';
       if (!datosFormulario.fechaNacimiento) {
         e.fechaNacimiento = 'El campo es obligatorio';
       } else {
@@ -116,13 +120,16 @@ const Registration = () => {
       }
       if (!datosFormulario.dniAlumno.trim()) {
         e.dniAlumno = 'El campo es obligatorio';
-      } else if (datosFormulario.dniAlumno.length < 7 || datosFormulario.dniAlumno.length > 9) {
+      } else if (
+        datosFormulario.dniAlumno.length < 7 ||
+        datosFormulario.dniAlumno.length > 9
+      ) {
         e.dniAlumno = 'El DNI debe tener entre 7 y 9 números';
       }
     }
     setErrores(e);
     return Object.keys(e).length === 0;
-  }
+  };
 
   const obtenerLimitesFecha = () => {
     const hoy = new Date();
@@ -135,11 +142,20 @@ const Registration = () => {
     };
     const MARGEN = 6;
     if (datosFormulario.nivel === 'inicial')
-      return { min: formato(restar(5, MARGEN)), max: formato(restar(3, -MARGEN)) };
+      return {
+        min: formato(restar(5, MARGEN)),
+        max: formato(restar(3, -MARGEN)),
+      };
     if (datosFormulario.nivel === 'primaria')
-      return { min: formato(restar(12, MARGEN)), max: formato(restar(6, -MARGEN)) };
+      return {
+        min: formato(restar(12, MARGEN)),
+        max: formato(restar(6, -MARGEN)),
+      };
     if (datosFormulario.nivel === 'secundaria')
-      return { min: formato(restar(18, MARGEN)), max: formato(restar(13, -MARGEN)) };
+      return {
+        min: formato(restar(18, MARGEN)),
+        max: formato(restar(13, -MARGEN)),
+      };
     return { min: '', max: '' };
   };
 
@@ -149,40 +165,42 @@ const Registration = () => {
       <main className="registro-main">
         <div className="registro-hero">
           <h1 className="registro-titulo">
-            Únete a nuestra <span className="registro-titulo-acento">comunidad</span>
+            Únete a nuestra{' '}
+            <span className="registro-titulo-acento">comunidad</span>
           </h1>
           <p className="registro-subtitulo">
-            Comienza el proceso de inscripción para el nuevo ciclo lectivo. Un camino de
-            descubrimiento, aprendizaje y transformación te espera.
+            Comienza el proceso de inscripción para el nuevo ciclo lectivo. Un
+            camino de descubrimiento, aprendizaje y transformación te espera.
           </p>
         </div>
 
-
-        <div className="stepper">
+        <div className="stepper" aria-label="Progreso de la inscripción">
           {PASOS.map((paso, index) => {
             const numero = index + 1;
             const activo = numero === pasoActual;
             const completado = numero < pasoActual;
             return (
               <React.Fragment key={paso}>
-                <div className={`stepper-paso ${activo ? 'activo' : ''} ${completado ? 'completado' : ''}`}>
-                  <div className="stepper-circulo">
+                <div
+                  className={`stepper-paso ${activo ? 'activo' : ''} ${completado ? 'completado' : ''}`}
+                  aria-current={activo ? 'step' : undefined}
+                >
+                  <div className="stepper-circulo" aria-hidden="true">
                     {completado ? '✓' : numero}
                   </div>
                   <span className="stepper-etiqueta">{paso}</span>
                 </div>
                 {index < PASOS.length - 1 && (
-                  <div className={`stepper-linea ${completado ? 'completada' : ''}`} />
+                  <div
+                    className={`stepper-linea ${completado ? 'completada' : ''}`}
+                  />
                 )}
               </React.Fragment>
             );
           })}
         </div>
 
-
         <div className="registro-card">
-
-
           {pasoActual === 1 && (
             <section className="paso">
               <h2 className="paso-titulo">Paso 1: Selección de Nivel</h2>
@@ -200,124 +218,241 @@ const Registration = () => {
                   </button>
                 ))}
               </div>
-              {errores.nivel && <p className="form-error">{errores.nivel}</p>}
+              {errores.nivel && (
+                <p className="form-error" role="alert">
+                  {errores.nivel}
+                </p>
+              )}
             </section>
           )}
-
 
           {pasoActual === 2 && (
             <section className="paso">
               <h2 className="paso-titulo">Paso 2: Datos del Tutor</h2>
               <div className="form-grid">
                 <div className="form-grupo">
-                  <label className="form-label">NOMBRE COMPLETO</label>
+                  <label className="form-label" htmlFor="nombreTutor">
+                    NOMBRE COMPLETO
+                  </label>
                   <input
+                    id="nombreTutor"
                     className={`form-input ${errores.nombreTutor ? 'form-input--error' : ''}`}
                     type="text"
                     placeholder="Ej. Juan Pérez"
+                    autoComplete="name"
                     value={datosFormulario.nombreTutor}
-                    onChange={(e) => handleChange('nombreTutor', e.target.value)}
+                    onChange={(e) =>
+                      handleChange('nombreTutor', e.target.value)
+                    }
+                    aria-invalid={Boolean(errores.nombreTutor)}
+                    aria-describedby={
+                      errores.nombreTutor ? 'nombreTutor-error' : undefined
+                    }
                   />
-                  {errores.nombreTutor && <p className="form-error">{errores.nombreTutor}</p>}
+                  {errores.nombreTutor && (
+                    <p
+                      id="nombreTutor-error"
+                      className="form-error"
+                      role="alert"
+                    >
+                      {errores.nombreTutor}
+                    </p>
+                  )}
                 </div>
                 <div className="form-grupo">
-                  <label className="form-label">DNI</label>
+                  <label className="form-label" htmlFor="dniTutor">
+                    DNI
+                  </label>
                   <input
+                    id="dniTutor"
                     className={`form-input ${errores.dniTutor ? 'form-input--error' : ''}`}
                     type="text"
+                    inputMode="numeric"
                     placeholder="Número de documento"
                     value={datosFormulario.dniTutor}
                     onChange={(e) => handleChange('dniTutor', e.target.value)}
+                    aria-invalid={Boolean(errores.dniTutor)}
+                    aria-describedby={
+                      errores.dniTutor ? 'dniTutor-error' : undefined
+                    }
                   />
-                  {errores.dniTutor && <p className="form-error">{errores.dniTutor}</p>}
+                  {errores.dniTutor && (
+                    <p id="dniTutor-error" className="form-error" role="alert">
+                      {errores.dniTutor}
+                    </p>
+                  )}
                 </div>
                 <div className="form-grupo">
-                  <label className="form-label">CORREO ELECTRÓNICO</label>
+                  <label className="form-label" htmlFor="correo">
+                    CORREO ELECTRÓNICO
+                  </label>
                   <input
+                    id="correo"
                     className={`form-input ${errores.correo ? 'form-input--error' : ''}`}
                     type="email"
                     placeholder="correo@ejemplo.com"
+                    autoComplete="email"
                     value={datosFormulario.correo}
                     onChange={(e) => handleChange('correo', e.target.value)}
+                    aria-invalid={Boolean(errores.correo)}
+                    aria-describedby={
+                      errores.correo ? 'correo-error' : undefined
+                    }
                   />
-                  {errores.correo && <p className="form-error">{errores.correo}</p>}
+                  {errores.correo && (
+                    <p id="correo-error" className="form-error" role="alert">
+                      {errores.correo}
+                    </p>
+                  )}
                 </div>
                 <div className="form-grupo">
-                  <label className="form-label">TELÉFONO DE CONTACTO</label>
+                  <label className="form-label" htmlFor="telefono">
+                    TELÉFONO DE CONTACTO
+                  </label>
                   <input
+                    id="telefono"
                     className={`form-input ${errores.telefono ? 'form-input--error' : ''}`}
                     type="tel"
                     placeholder="+549 11 2345-6789"
+                    autoComplete="tel"
                     value={datosFormulario.telefono}
                     onChange={(e) => handleChange('telefono', e.target.value)}
+                    aria-invalid={Boolean(errores.telefono)}
+                    aria-describedby={
+                      errores.telefono ? 'telefono-error' : undefined
+                    }
                   />
-                  {errores.telefono && <p className="form-error">{errores.telefono}</p>}
+                  {errores.telefono && (
+                    <p id="telefono-error" className="form-error" role="alert">
+                      {errores.telefono}
+                    </p>
+                  )}
                 </div>
               </div>
             </section>
           )}
-
 
           {pasoActual === 3 && (
             <section className="paso">
               <h2 className="paso-titulo">Paso 3: Datos del Alumno</h2>
               <div className="form-grid">
                 <div className="form-grupo">
-                  <label className="form-label">NOMBRE COMPLETO DEL ALUMNO</label>
+                  <label className="form-label" htmlFor="nombreAlumno">
+                    NOMBRE COMPLETO DEL ALUMNO
+                  </label>
                   <input
+                    id="nombreAlumno"
                     className={`form-input ${errores.nombreAlumno ? 'form-input--error' : ''}`}
                     type="text"
                     placeholder="Nombre y apellido"
+                    autoComplete="off"
                     value={datosFormulario.nombreAlumno}
-                    onChange={(e) => handleChange('nombreAlumno', e.target.value)}
+                    onChange={(e) =>
+                      handleChange('nombreAlumno', e.target.value)
+                    }
+                    aria-invalid={Boolean(errores.nombreAlumno)}
+                    aria-describedby={
+                      errores.nombreAlumno ? 'nombreAlumno-error' : undefined
+                    }
                   />
-                  {errores.nombreAlumno && <p className="form-error">{errores.nombreAlumno}</p>}
+                  {errores.nombreAlumno && (
+                    <p
+                      id="nombreAlumno-error"
+                      className="form-error"
+                      role="alert"
+                    >
+                      {errores.nombreAlumno}
+                    </p>
+                  )}
                 </div>
                 <div className="form-grupo">
-                  <label className="form-label">DNI DEL ALUMNO</label>
+                  <label className="form-label" htmlFor="dniAlumno">
+                    DNI DEL ALUMNO
+                  </label>
                   <input
+                    id="dniAlumno"
                     className={`form-input ${errores.dniAlumno ? 'form-input--error' : ''}`}
                     type="text"
+                    inputMode="numeric"
                     placeholder="Número de documento"
                     value={datosFormulario.dniAlumno}
                     onChange={(e) => handleChange('dniAlumno', e.target.value)}
+                    aria-invalid={Boolean(errores.dniAlumno)}
+                    aria-describedby={
+                      errores.dniAlumno ? 'dniAlumno-error' : undefined
+                    }
                   />
-                  {errores.dniAlumno && <p className="form-error">{errores.dniAlumno}</p>}
+                  {errores.dniAlumno && (
+                    <p id="dniAlumno-error" className="form-error" role="alert">
+                      {errores.dniAlumno}
+                    </p>
+                  )}
                 </div>
                 <div className="form-grupo form-grupo--full">
-                  <label className="form-label">FECHA DE NACIMIENTO</label>
+                  <label className="form-label" htmlFor="fechaNacimiento">
+                    FECHA DE NACIMIENTO
+                  </label>
                   <input
+                    id="fechaNacimiento"
                     className={`form-input ${errores.fechaNacimiento ? 'form-input--error' : ''}`}
                     type="date"
                     min={obtenerLimitesFecha().min}
                     max={obtenerLimitesFecha().max}
                     value={datosFormulario.fechaNacimiento}
-                    onChange={(e) => handleChange('fechaNacimiento', e.target.value)}
+                    onChange={(e) =>
+                      handleChange('fechaNacimiento', e.target.value)
+                    }
+                    aria-invalid={Boolean(errores.fechaNacimiento)}
+                    aria-describedby={
+                      errores.fechaNacimiento
+                        ? 'fechaNacimiento-error'
+                        : undefined
+                    }
                   />
-                  {errores.fechaNacimiento && <p className="form-error">{errores.fechaNacimiento}</p>}
+                  {errores.fechaNacimiento && (
+                    <p
+                      id="fechaNacimiento-error"
+                      className="form-error"
+                      role="alert"
+                    >
+                      {errores.fechaNacimiento}
+                    </p>
+                  )}
                 </div>
                 <div className="form-grupo form-grupo--full">
-                  <label className="form-label">OBSERVACIONES / NECESIDADES ESPECIALES</label>
+                  <label className="form-label" htmlFor="observaciones">
+                    OBSERVACIONES / NECESIDADES ESPECIALES
+                  </label>
                   <textarea
+                    id="observaciones"
                     className="form-input form-textarea"
                     placeholder="Indicá cualquier información relevante..."
                     value={datosFormulario.observaciones}
-                    onChange={(e) => handleChange('observaciones', e.target.value)}
+                    onChange={(e) =>
+                      handleChange('observaciones', e.target.value)
+                    }
                   />
                 </div>
               </div>
             </section>
           )}
 
-
           <div className="botones-navegacion">
             {pasoActual > 1 && (
-              <button type="button" className="btn-anterior" onClick={pasoAnterior}>
+              <button
+                type="button"
+                className="btn-anterior"
+                onClick={pasoAnterior}
+              >
                 ← Paso Anterior
               </button>
             )}
             {pasoActual < 3 ? (
-              <button type="button" className="btn-siguiente" onClick={siguientePasoRegistracion}>
+              <button
+                type="button"
+                className="btn-siguiente"
+                onClick={siguientePasoRegistracion}
+              >
                 Siguiente Paso →
               </button>
             ) : (
@@ -331,10 +466,9 @@ const Registration = () => {
               </button>
             )}
           </div>
-
         </div>
       </main>
-      <SuccessModal 
+      <SuccessModal
         isOpen={showSuccessModal}
         onClose={() => navigate('/')}
         title="¡Inscripción Exitosa!"

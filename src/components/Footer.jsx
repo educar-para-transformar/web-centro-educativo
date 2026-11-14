@@ -13,38 +13,42 @@ const Footer = () => {
           </p>
         </div>
         <div className="footer-links">
-          <Link
-            to="https://www.facebook.com/"
+          <a
+            href="https://www.facebook.com/"
             target="_blank"
             rel="noopener noreferrer"
             className="footer-link"
+            aria-label="Facebook (abre en una nueva pestaña)"
           >
             FACEBOOK
-          </Link>
-          <Link
-            to="https://www.instagram.com/"
+          </a>
+          <a
+            href="https://www.instagram.com/"
             target="_blank"
             rel="noopener noreferrer"
             className="footer-link"
+            aria-label="Instagram (abre en una nueva pestaña)"
           >
             INSTAGRAM
-          </Link>
-          <Link
-            to="https://www.whatsapp.com/"
+          </a>
+          <a
+            href="https://www.whatsapp.com/"
             target="_blank"
             rel="noopener noreferrer"
             className="footer-link"
+            aria-label="WhatsApp (abre en una nueva pestaña)"
           >
             WHATSAPP
-          </Link>
-          <Link
-            to="https://maps.app.goo.gl/W7UVjMBdcku6eaPm7"
+          </a>
+          <a
+            href="https://maps.app.goo.gl/W7UVjMBdcku6eaPm7"
             target="_blank"
             rel="noopener noreferrer"
             className="footer-link"
+            aria-label="Ubicación en Google Maps (abre en una nueva pestaña)"
           >
             UBICACIÓN
-          </Link>
+          </a>
           <Link to="/tp4" className="footer-link">
             UNIDAD 4
           </Link>

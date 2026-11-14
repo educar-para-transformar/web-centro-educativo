@@ -2,8 +2,22 @@ import React from 'react';
 import '../styles/LargeCard.css';
 
 const LargeCard = ({ image, title, subtitle, label, buttonText, onClick }) => {
+  const handleKeyDown = (event) => {
+    if (!onClick) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onClick();
+    }
+  };
+
   return (
-    <article className="large-card" onClick={onClick} onKeyUp={onClick}>
+    <article
+      className="large-card"
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+    >
       {image && (
         <img
           loading="lazy"
@@ -21,6 +35,7 @@ const LargeCard = ({ image, title, subtitle, label, buttonText, onClick }) => {
 
         {buttonText && (
           <button
+            type="button"
             className="large-card-button"
             onClick={(e) => {
               e.stopPropagation();

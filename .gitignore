@@ -27,7 +27,10 @@ coverage
 
 .env
 serviceAccountKey.json
+.vercel
 /scratch
+
+docs/backend-vercel.md
 
 # Firebase compiled functions
 functions/lib/
