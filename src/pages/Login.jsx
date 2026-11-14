@@ -77,7 +77,7 @@ const Login = () => {
     setIsSubmitting(true);
     setLoginError('');
     try {
-      await login(identifier, password);
+      await login(identifier, password, { remember: rememberMe });
     } catch (err) {
       handleErrors(err.code);
     } finally {
@@ -191,7 +191,8 @@ const Login = () => {
           <div className="relative z-10">
             <div className="mb-8">
               <img
-                loading="lazy"
+                loading="eager"
+                decoding="async"
                 alt="Logo Educar para Transformar"
                 className="h-20 w-auto object-contain bg-white rounded-xl p-2 shadow-lg"
                 src={images.logo}
@@ -247,7 +248,8 @@ const Login = () => {
             {/* Mobile Logo (visible only on small screens) */}
             <div className="lg:hidden mb-10 text-center flex flex-col items-center mt-6">
               <img
-                loading="lazy"
+                loading="eager"
+                decoding="async"
                 alt="Logo Educar para Transformar"
                 className="h-16 w-auto object-contain mb-4 bg-white rounded-xl p-2 shadow-md"
                 src={images.logo}
@@ -292,7 +294,12 @@ const Login = () => {
                     name="identifier"
                     placeholder="ej. EST-2026-88123 o correo@ejemplo.com"
                     type="text"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck="false"
                     required
+                    aria-invalid={Boolean(loginError)}
+                    aria-describedby={loginError ? 'login-error' : undefined}
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
                   />
@@ -328,7 +335,10 @@ const Login = () => {
                     name="password"
                     placeholder="••••••••"
                     type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
                     required
+                    aria-invalid={Boolean(loginError)}
+                    aria-describedby={loginError ? 'login-error' : undefined}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
@@ -337,8 +347,17 @@ const Login = () => {
                       className="text-slate-400 hover:text-slate-600 focus:outline-none"
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
+                      aria-label={
+                        showPassword
+                          ? 'Ocultar contraseña'
+                          : 'Mostrar contraseña'
+                      }
+                      aria-pressed={showPassword}
                     >
-                      <span className="material-symbols-outlined">
+                      <span
+                        className="material-symbols-outlined"
+                        aria-hidden="true"
+                      >
                         {showPassword ? 'visibility' : 'visibility_off'}
                       </span>
                     </button>
@@ -377,7 +396,10 @@ const Login = () => {
               </button>
               {loginError && (
                 <p
-                  test-dataid="login-error-text"
+                  id="login-error"
+                  role="alert"
+                  aria-live="assertive"
+                  data-testid="login-error-text"
                   className="text-red-500 text-sm font-bold text-center mt-4 bg-red-50 p-2.5 rounded-xl border border-red-200"
                 >
                   {loginError}
@@ -390,12 +412,13 @@ const Login = () => {
               <p className="font-body text-sm text-slate-500">
                 ¿Necesitas ayuda para acceder a tu cuenta?{' '}
                 <br className="sm:hidden" />
-                <a
-                  className="font-medium text-orange-600 hover:text-orange-700 transition-colors"
-                  href="#"
+                <button
+                  type="button"
+                  onClick={() => navigate('/contact')}
+                  className="font-medium text-orange-600 hover:text-orange-700 transition-colors bg-transparent border-none p-0 cursor-pointer"
                 >
                   Contactar Soporte
-                </a>
+                </button>
               </p>
             </div>
           </div>

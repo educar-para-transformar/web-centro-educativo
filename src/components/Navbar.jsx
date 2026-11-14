@@ -79,8 +79,9 @@ const Navbar = ({ noButtons = false }) => {
             type="button"
             className="navbar-hamburger"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            aria-label="Menú principal"
+            aria-label={isMobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
             aria-expanded={isMobileMenuOpen}
+            aria-controls="mobile-menu"
           >
             <span className="material-symbols-outlined">
               {isMobileMenuOpen ? 'close' : 'menu'}
@@ -227,6 +228,9 @@ const UserMenu = ({
         onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
         className="flex pl-3 pr-3 items-center gap-2.5 px-4.5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-full font-label font-bold text-sm shadow-md hover:from-orange-600 hover:to-amber-600 transition-all duration-200 cursor-pointer focus:outline-none"
         data-testid="user-menu-button"
+        aria-haspopup="true"
+        aria-expanded={isUserMenuOpen}
+        aria-controls="user-menu"
       >
         <span
           className="material-symbols-outlined text-lg flex items-center justify-center"
@@ -246,19 +250,24 @@ const UserMenu = ({
       </button>
 
       {isUserMenuOpen && (
-        <div className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-s shadow-[0px_10px_25px_rgba(0,0,0,0.08)] py-2 space-y-1 z-30 animate-in fade-in slide-in-from-top-2 duration-150 text-left">
+        <div
+          id="user-menu"
+          className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-s shadow-[0px_10px_25px_rgba(0,0,0,0.08)] py-2 space-y-1 z-30 animate-in fade-in slide-in-from-top-2 duration-150 text-left"
+        >
           <button
             type="button"
-            onClick={() => {
-              alert('Esta sección de perfil aún no está disponible.');
-              setIsUserMenuOpen(false);
-            }}
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors text-sm font-semibold cursor-pointer text-left focus:outline-none"
+            disabled
+            aria-disabled="true"
+            title="Próximamente"
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-slate-400 text-sm font-semibold text-left cursor-not-allowed opacity-70"
           >
             <span className="material-symbols-outlined text-slate-400 text-lg">
               person
             </span>
             Ver Perfil
+            <span className="ml-auto text-[10px] font-bold uppercase tracking-wide">
+              Pronto
+            </span>
           </button>
           {isAdmin && (
             <button
@@ -357,8 +366,37 @@ const MobileDrawer = ({
   isTeacher,
   isParent,
 }) => {
+  const closeButtonRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const previouslyFocused = document.activeElement;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    closeButtonRef.current?.focus();
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (previouslyFocused instanceof HTMLElement) {
+        previouslyFocused.focus();
+      }
+    };
+  }, [isOpen, onClose]);
+
   return (
-    <div className={`navbar-mobile-drawer ${isOpen ? 'open' : ''}`}>
+    <div
+      id="mobile-menu"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Menú de navegación"
+      aria-hidden={!isOpen}
+      inert={isOpen ? undefined : true}
+      className={`navbar-mobile-drawer ${isOpen ? 'open' : ''}`}
+    >
       <div className="mobile-drawer-header">
         <Link
           to="/"
@@ -379,6 +417,7 @@ const MobileDrawer = ({
           className="mobile-drawer-close"
           onClick={onClose}
           aria-label="Cerrar menú"
+          ref={closeButtonRef}
         >
           <span className="material-symbols-outlined">close</span>
         </button>
@@ -482,16 +521,15 @@ const MobileDrawer = ({
             <div className="mobile-user-buttons">
               <button
                 type="button"
-                onClick={() => {
-                  alert('Esta sección de perfil aún no está disponible.');
-                  onClose();
-                }}
-                className="mobile-action-btn profile-btn"
+                disabled
+                aria-disabled="true"
+                title="Próximamente"
+                className="mobile-action-btn profile-btn opacity-70 cursor-not-allowed"
               >
                 <span className="material-symbols-outlined text-lg">
                   person
                 </span>
-                Ver Perfil
+                Ver Perfil (próximamente)
               </button>
               {isAdmin && (
                 <button
