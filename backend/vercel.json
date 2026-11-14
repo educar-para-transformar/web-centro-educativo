@@ -1,15 +1,16 @@
 {
-  "functions": {
-    "api/*.ts": {
-      "maxDuration": 300,
-      "memory": 1024
-    }
-  },
-  "regions": ["gru1"],
-  "crons": [
-    {
-      "path": "/api/cron/recordatorios",
-      "schedule": "0 12 * * *"
-    }
-  ]
+    "version": 2,
+    "functions": {
+        "api/[...path].ts": {
+        "maxDuration": 300,
+        "memory": 1024
+        }
+    },
+    "regions": ["gru1"],
+    "crons": [
+        {
+        "path": "/api/cron/recordatorios",
+        "schedule": "0 12 * * *"
+        }
+    ]
 }
