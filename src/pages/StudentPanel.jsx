@@ -700,6 +700,7 @@ const StudentPanel = () => {
           return (
             <div
               key={trimestre}
+              data-testid={`boletin-trimestre-${trimestre}`}
               className="print-avoid-break bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"
             >
               <div className="px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -751,6 +752,7 @@ const StudentPanel = () => {
                     {filas.map((fila) => (
                       <tr
                         key={fila.materiaId}
+                        data-testid={`boletin-${fila.materiaId}-t${trimestre}`}
                         className="hover:bg-slate-50/50 transition-colors"
                       >
                         <td className="py-4 px-6 font-bold text-slate-800">
@@ -801,7 +803,11 @@ const StudentPanel = () => {
               {/* Vista Mobile (Tarjetas) */}
               <div className="block md:hidden divide-y divide-slate-100">
                 {filas.map((fila) => (
-                  <div key={fila.materiaId} className="p-5 space-y-3">
+                  <div
+                    key={fila.materiaId}
+                    data-testid={`boletin-mobile-${fila.materiaId}-t${trimestre}`}
+                    className="p-5 space-y-3"
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <p className="font-bold text-slate-800 leading-tight">
                         {fila.materia}

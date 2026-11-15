@@ -22,6 +22,8 @@ const Navbar = ({ noButtons = false }) => {
   const isAdmin = isLoggedIn && user?.role === 'user_admin';
   const isStudent = isLoggedIn && user?.role === 'Estudiante';
   const isTeacher = isLoggedIn && user?.role === 'Staff';
+  const isParent =
+    isLoggedIn && (user?.role === 'Padre' || user?.role === 'Padre/Tutor');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Disable body scroll when mobile menu is open
@@ -62,6 +64,7 @@ const Navbar = ({ noButtons = false }) => {
               isAdmin={isAdmin}
               isStudent={isStudent}
               isTeacher={isTeacher}
+              isParent={isParent}
             />
           ) : (
             <Button variant="primary" onClick={() => navigate('/login')}>
@@ -76,8 +79,9 @@ const Navbar = ({ noButtons = false }) => {
             type="button"
             className="navbar-hamburger"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            aria-label="Menú principal"
+            aria-label={isMobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
             aria-expanded={isMobileMenuOpen}
+            aria-controls="mobile-menu"
           >
             <span className="material-symbols-outlined">
               {isMobileMenuOpen ? 'close' : 'menu'}
@@ -107,6 +111,7 @@ const Navbar = ({ noButtons = false }) => {
             isAdmin={isAdmin}
             isStudent={isStudent}
             isTeacher={isTeacher}
+            isParent={isParent}
           />
         )}
       </div>
@@ -176,6 +181,14 @@ const DesktopLinks = () => {
       >
         Empleo
       </NavLink>
+      <NavLink
+        to="/tp4"
+        className={({ isActive }) =>
+          isActive ? 'nav-link active' : 'nav-link'
+        }
+      >
+        Unidad 4
+      </NavLink>
     </div>
   );
 };
@@ -183,7 +196,15 @@ const DesktopLinks = () => {
 /**
  * Subcomponent to render the user profile navigation dropdown menu on desktop.
  */
-const UserMenu = ({ logout, displayName, navigate, isAdmin, isStudent, isTeacher }) => {
+const UserMenu = ({
+  logout,
+  displayName,
+  navigate,
+  isAdmin,
+  isStudent,
+  isTeacher,
+  isParent,
+}) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
 
@@ -207,6 +228,9 @@ const UserMenu = ({ logout, displayName, navigate, isAdmin, isStudent, isTeacher
         onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
         className="flex pl-3 pr-3 items-center gap-2.5 px-4.5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-full font-label font-bold text-sm shadow-md hover:from-orange-600 hover:to-amber-600 transition-all duration-200 cursor-pointer focus:outline-none"
         data-testid="user-menu-button"
+        aria-haspopup="true"
+        aria-expanded={isUserMenuOpen}
+        aria-controls="user-menu"
       >
         <span
           className="material-symbols-outlined text-lg flex items-center justify-center"
@@ -226,19 +250,24 @@ const UserMenu = ({ logout, displayName, navigate, isAdmin, isStudent, isTeacher
       </button>
 
       {isUserMenuOpen && (
-        <div className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-s shadow-[0px_10px_25px_rgba(0,0,0,0.08)] py-2 space-y-1 z-30 animate-in fade-in slide-in-from-top-2 duration-150 text-left">
+        <div
+          id="user-menu"
+          className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-s shadow-[0px_10px_25px_rgba(0,0,0,0.08)] py-2 space-y-1 z-30 animate-in fade-in slide-in-from-top-2 duration-150 text-left"
+        >
           <button
             type="button"
-            onClick={() => {
-              alert('Esta sección de perfil aún no está disponible.');
-              setIsUserMenuOpen(false);
-            }}
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors text-sm font-semibold cursor-pointer text-left focus:outline-none"
+            disabled
+            aria-disabled="true"
+            title="Próximamente"
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-slate-400 text-sm font-semibold text-left cursor-not-allowed opacity-70"
           >
             <span className="material-symbols-outlined text-slate-400 text-lg">
               person
             </span>
             Ver Perfil
+            <span className="ml-auto text-[10px] font-bold uppercase tracking-wide">
+              Pronto
+            </span>
           </button>
           {isAdmin && (
             <button
@@ -285,6 +314,21 @@ const UserMenu = ({ logout, displayName, navigate, isAdmin, isStudent, isTeacher
               Mis materias
             </button>
           )}
+          {isParent && (
+            <button
+              type="button"
+              onClick={() => {
+                navigate('/panel-tutor');
+                setIsUserMenuOpen(false);
+              }}
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors text-sm font-semibold cursor-pointer text-left focus:outline-none"
+            >
+              <span className="material-symbols-outlined text-slate-400 text-lg">
+                family_restroom
+              </span>
+              Panel del tutor
+            </button>
+          )}
           <div className="border-t border-slate-100 my-1"></div>
           <button
             type="button"
@@ -319,10 +363,40 @@ const MobileDrawer = ({
   navigate,
   isAdmin,
   isStudent,
-  isTeacher
+  isTeacher,
+  isParent,
 }) => {
+  const closeButtonRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const previouslyFocused = document.activeElement;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    closeButtonRef.current?.focus();
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (previouslyFocused instanceof HTMLElement) {
+        previouslyFocused.focus();
+      }
+    };
+  }, [isOpen, onClose]);
+
   return (
-    <div className={`navbar-mobile-drawer ${isOpen ? 'open' : ''}`}>
+    <div
+      id="mobile-menu"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Menú de navegación"
+      aria-hidden={!isOpen}
+      inert={isOpen ? undefined : true}
+      className={`navbar-mobile-drawer ${isOpen ? 'open' : ''}`}
+    >
       <div className="mobile-drawer-header">
         <Link
           to="/"
@@ -343,6 +417,7 @@ const MobileDrawer = ({
           className="mobile-drawer-close"
           onClick={onClose}
           aria-label="Cerrar menú"
+          ref={closeButtonRef}
         >
           <span className="material-symbols-outlined">close</span>
         </button>
@@ -419,15 +494,25 @@ const MobileDrawer = ({
           <span className="material-symbols-outlined">work</span>
           Empleo
         </NavLink>
+        <NavLink
+          to="/tp4"
+          onClick={onClose}
+          className={({ isActive }) =>
+            isActive ? 'mobile-nav-link active' : 'mobile-nav-link'
+          }
+        >
+          <span className="material-symbols-outlined">
+            integration_instructions
+          </span>
+          Unidad 4
+        </NavLink>
       </div>
 
       <div className="mobile-drawer-actions">
         {isLoggedIn && user ? (
           <div className="mobile-user-info">
             <div className="mobile-user-profile">
-              <span className="material-symbols-outlined">
-                account_circle
-              </span>
+              <span className="material-symbols-outlined">account_circle</span>
               <div className="mobile-user-details">
                 <span className="mobile-user-welcome">Hola,</span>
                 <span className="mobile-user-name">{displayName}</span>
@@ -436,14 +521,15 @@ const MobileDrawer = ({
             <div className="mobile-user-buttons">
               <button
                 type="button"
-                onClick={() => {
-                  alert('Esta sección de perfil aún no está disponible.');
-                  onClose();
-                }}
-                className="mobile-action-btn profile-btn"
+                disabled
+                aria-disabled="true"
+                title="Próximamente"
+                className="mobile-action-btn profile-btn opacity-70 cursor-not-allowed"
               >
-                <span className="material-symbols-outlined text-lg">person</span>
-                Ver Perfil
+                <span className="material-symbols-outlined text-lg">
+                  person
+                </span>
+                Ver Perfil (próximamente)
               </button>
               {isAdmin && (
                 <button
@@ -454,7 +540,9 @@ const MobileDrawer = ({
                   }}
                   className="mobile-action-btn profile-btn"
                 >
-                  <span className="material-symbols-outlined text-lg">admin_panel_settings</span>
+                  <span className="material-symbols-outlined text-lg">
+                    admin_panel_settings
+                  </span>
                   Panel de usuarios
                 </button>
               )}
@@ -467,7 +555,9 @@ const MobileDrawer = ({
                   }}
                   className="mobile-action-btn profile-btn"
                 >
-                  <span className="material-symbols-outlined text-lg">school</span>
+                  <span className="material-symbols-outlined text-lg">
+                    school
+                  </span>
                   Mi boletín
                 </button>
               )}
@@ -480,8 +570,25 @@ const MobileDrawer = ({
                   }}
                   className="mobile-action-btn profile-btn"
                 >
-                  <span className="material-symbols-outlined text-lg">menu_book</span>
+                  <span className="material-symbols-outlined text-lg">
+                    menu_book
+                  </span>
                   Mis materias
+                </button>
+              )}
+              {isParent && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate('/panel-tutor');
+                    onClose();
+                  }}
+                  className="mobile-action-btn profile-btn"
+                >
+                  <span className="material-symbols-outlined text-lg">
+                    family_restroom
+                  </span>
+                  Panel del tutor
                 </button>
               )}
               <button
@@ -493,7 +600,9 @@ const MobileDrawer = ({
                 }}
                 className="mobile-action-btn logout-btn"
               >
-                <span className="material-symbols-outlined text-lg">logout</span>
+                <span className="material-symbols-outlined text-lg">
+                  logout
+                </span>
                 Cerrar Sesión
               </button>
             </div>

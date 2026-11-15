@@ -12,12 +12,15 @@ import Login from './pages/Login';
 import News from './pages/News';
 import NotFound from './pages/NotFound';
 import Registration from './pages/Registration';
+import ReportesPagos from './pages/ReportesPagos';
 import ResetPassword from './pages/ResetPassword';
 import Wellness from './pages/Wellness';
 
+import ParentPanel from './pages/ParentPanel';
 import Privacy from './pages/Privacy';
 import StudentPanel from './pages/StudentPanel';
 import TeacherPanel from './pages/TeacherPanel';
+import Tp4 from './pages/Tp4';
 
 function App() {
   return (
@@ -36,8 +39,11 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/admin" element={<AdminPanel />} />
+        <Route path="/reportes-pagos" element={<ReportesPagos />} />
         <Route path="/panel-alumno" element={<StudentPanel />} />
         <Route path="/panel-docente" element={<TeacherPanel />} />
+        <Route path="/panel-tutor" element={<ParentPanel />} />
+        <Route path="/tp4" element={<Tp4 />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

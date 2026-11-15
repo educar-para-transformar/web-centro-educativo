@@ -32,6 +32,9 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.cf_deleteSchedule = exports.cf_upsertSchedule = exports.cf_deleteMaterial = exports.cf_upsertMaterial = exports.cf_saveAttendance = exports.cf_getStudentMaterials = exports.cf_getStudentSchedule = exports.cf_getStudentAttendance = exports.cf_confirmStudentPasswordReset = exports.cf_requestStudentPasswordReset = exports.cf_saveGrades = exports.cf_getDocentePanel = exports.cf_setMateriaStudents = exports.cf_updateMateria = exports.cf_createMateria = exports.cf_seedMateriasYCalificaciones = exports.cf_getStudentGrades = exports.cf_completePasswordChange = exports.cf_updateUserProfile = exports.cf_changeStudentPassword = exports.cf_resetUserPasswordToDni = exports.cf_createAdministrativeUser = exports.cf_resetStudentPassword = exports.cf_loginStudent = exports.cf_activateStudentAccount = exports.cf_updateParentEmailAndResend = exports.cf_resendActivationLink = exports.cf_createParentAndStudents = void 0;
 const https_1 = require("firebase-functions/v2/https");
@@ -40,9 +43,13 @@ const firestore_1 = require("firebase-admin/firestore");
 const crypto = __importStar(require("crypto"));
 const bcrypt = __importStar(require("bcryptjs"));
 const email_1 = require("./email");
-// Inicializar la SDK de Admin de Firebase
-admin.initializeApp();
-const db = admin.firestore();
+// Módulo de cuotas, pagos, reportes y recordatorios (Funcionalidades.md).
+// Re-exporta las funciones cf_* y las programadas sc_* para su despliegue.
+__exportStar(require("./pagos"), exports);
+// Inicializar la SDK de Admin de Firebase (reutiliza la instancia si ya existe,
+// p. ej. cuando se carga primero el módulo de pagos).
+const app = admin.apps.length ? admin.app() : admin.initializeApp();
+const db = admin.firestore(app);
 const APP_BASE_URL = (process.env.APP_BASE_URL || process.env.REDIRECT_URL || 'http://localhost:5173')
     .replace(/\/+$/, '')
     .replace(/\/auth-action$/, '');
@@ -103,15 +110,37 @@ async function invalidatePasswordResetTokens(studentId) {
         await batch.commit();
 }
 /**
- * Resuelve el alumno objetivo de una consulta:
+ * Resuelve el alumno objetivo de una consulta validando permisos:
  * - Estudiante: siempre su propio UID.
- * - user_admin: puede indicar ?studentId= o body.studentId.
+ * - Padre: solo alumnos cuyo parentId coincida con su UID.
+ * - user_admin: puede indicar cualquier ?studentId= o su propio UID.
  */
-function resolveStudentUid(callerClaims, requestedStudentId) {
-    if (callerClaims.role === 'user_admin' && requestedStudentId) {
-        return String(requestedStudentId);
+async function resolveAuthorizedStudentUid(callerClaims, requestedStudentId) {
+    const role = callerClaims.role;
+    const requested = requestedStudentId ? String(requestedStudentId) : '';
+    if (role === 'user_admin') {
+        return requested || callerClaims.uid;
     }
-    return callerClaims.uid;
+    if (role === 'Estudiante') {
+        if (requested && requested !== callerClaims.uid) {
+            throw new HttpError(403, 'Permisos insuficientes.');
+        }
+        return callerClaims.uid;
+    }
+    if (role === 'Padre') {
+        if (!requested) {
+            throw new HttpError(400, 'Falta el studentId del alumno consultado.');
+        }
+        const studentDoc = await db.collection('students').doc(requested).get();
+        if (!studentDoc.exists) {
+            throw new HttpError(404, 'Estudiante no encontrado.');
+        }
+        if (studentDoc.data()?.parentId !== callerClaims.uid) {
+            throw new HttpError(403, 'Permisos insuficientes.');
+        }
+        return requested;
+    }
+    throw new HttpError(403, 'Permisos insuficientes.');
 }
 /**
  * Genera un ID único para estudiante en el formato EST-YYYY-XXXXX
@@ -765,15 +794,11 @@ exports.cf_getStudentGrades = (0, https_1.onRequest)({ cors: true, invoker: 'pub
     try {
         const callerClaims = await verifyAuth(req);
         const role = callerClaims.role;
-        if (role !== 'Estudiante' && role !== 'user_admin') {
-            res.status(403).send({ error: 'Permisos insuficientes: Solo el alumno o un administrador puede consultar notas.' });
+        if (!['Estudiante', 'Padre', 'user_admin'].includes(role)) {
+            res.status(403).send({ error: 'Permisos insuficientes: Solo el alumno, su tutor o un administrador puede consultar notas.' });
             return;
         }
-        // El alumno solo accede a su propio legajo; el admin puede indicar otro estudiante
-        let studentUid = callerClaims.uid;
-        if (role === 'user_admin' && req.query.studentId) {
-            studentUid = String(req.query.studentId);
-        }
+        const studentUid = await resolveAuthorizedStudentUid(callerClaims, req.query.studentId);
         const studentRef = db.collection('students').doc(studentUid);
         const studentDoc = await studentRef.get();
         if (!studentDoc.exists) {
@@ -1486,11 +1511,11 @@ exports.cf_confirmStudentPasswordReset = (0, https_1.onRequest)({ cors: true, in
 exports.cf_getStudentAttendance = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
     try {
         const callerClaims = await verifyAuth(req);
-        if (callerClaims.role !== 'Estudiante' && callerClaims.role !== 'user_admin') {
+        if (!['Estudiante', 'Padre', 'user_admin'].includes(callerClaims.role)) {
             res.status(403).send({ error: 'Permisos insuficientes.' });
             return;
         }
-        const studentUid = resolveStudentUid(callerClaims, req.query.studentId);
+        const studentUid = await resolveAuthorizedStudentUid(callerClaims, req.query.studentId);
         const studentDoc = await db.collection('students').doc(studentUid).get();
         if (!studentDoc.exists) {
             res.status(404).send({ error: 'Estudiante no encontrado.' });
@@ -1568,11 +1593,11 @@ exports.cf_getStudentAttendance = (0, https_1.onRequest)({ cors: true, invoker: 
 exports.cf_getStudentSchedule = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
     try {
         const callerClaims = await verifyAuth(req);
-        if (callerClaims.role !== 'Estudiante' && callerClaims.role !== 'user_admin') {
+        if (!['Estudiante', 'Padre', 'user_admin'].includes(callerClaims.role)) {
             res.status(403).send({ error: 'Permisos insuficientes.' });
             return;
         }
-        const studentUid = resolveStudentUid(callerClaims, req.query.studentId);
+        const studentUid = await resolveAuthorizedStudentUid(callerClaims, req.query.studentId);
         const studentDoc = await db.collection('students').doc(studentUid).get();
         if (!studentDoc.exists) {
             res.status(404).send({ error: 'Estudiante no encontrado.' });
@@ -1642,11 +1667,11 @@ exports.cf_getStudentSchedule = (0, https_1.onRequest)({ cors: true, invoker: 'p
 exports.cf_getStudentMaterials = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
     try {
         const callerClaims = await verifyAuth(req);
-        if (callerClaims.role !== 'Estudiante' && callerClaims.role !== 'user_admin') {
+        if (!['Estudiante', 'Padre', 'user_admin'].includes(callerClaims.role)) {
             res.status(403).send({ error: 'Permisos insuficientes.' });
             return;
         }
-        const studentUid = resolveStudentUid(callerClaims, req.query.studentId);
+        const studentUid = await resolveAuthorizedStudentUid(callerClaims, req.query.studentId);
         const studentDoc = await db.collection('students').doc(studentUid).get();
         if (!studentDoc.exists) {
             res.status(404).send({ error: 'Estudiante no encontrado.' });

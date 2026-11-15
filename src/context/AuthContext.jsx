@@ -7,7 +7,10 @@ import {
   signInWithCustomToken,
   signOut,
   EmailAuthProvider,
-  reauthenticateWithCredential
+  reauthenticateWithCredential,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
 } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 
@@ -48,13 +51,13 @@ export const AuthProvider = ({ children }) => {
             email: firebaseUser.email,
             role,
             studentId,
-            ...profileData
+            ...profileData,
           };
 
           setUser(loggedUser);
           localStorage.setItem('school_user', JSON.stringify(loggedUser));
         } catch (error) {
-          console.error("Error obteniendo claims/perfil de Firebase:", error);
+          console.error('Error obteniendo claims/perfil de Firebase:', error);
           setUser(null);
           localStorage.removeItem('school_user');
         }
@@ -74,27 +77,37 @@ export const AuthProvider = ({ children }) => {
    * - Si contiene '@' se trata de un email (tutores, staff, administradores)
    * - Si no (ej. EST-2026-XXXXX) se trata de un estudiante
    */
-  const loginReal = async (identifier, password) => {
+  const loginReal = async (identifier, password, { remember = true } = {}) => {
+    await setPersistence(
+      auth,
+      remember ? browserLocalPersistence : browserSessionPersistence
+    );
     const isStudent = !identifier.includes('@');
 
     if (isStudent) {
       // Iniciar sesión de alumno usando la Cloud Function cf_loginStudent (devuelve customToken)
-      const FUNCTIONS_BASE_URL = import.meta.env.VITE_FUNCTIONS_BASE_URL || (import.meta.env.DEV ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1' : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
+      const FUNCTIONS_BASE_URL =
+        import.meta.env.VITE_FUNCTIONS_BASE_URL ||
+        (import.meta.env.DEV
+          ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1'
+          : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
       const response = await fetch(`${FUNCTIONS_BASE_URL}/cf_loginStudent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentID_login: identifier, password })
+        body: JSON.stringify({ studentID_login: identifier, password }),
       });
 
       if (!response.ok) {
         const errData = await response.json();
-        const error = new Error(errData.error || 'Credenciales de alumno incorrectas.');
+        const error = new Error(
+          errData.error || 'Credenciales de alumno incorrectas.'
+        );
         if (response.status === 401) error.code = 'Credenciales incorrectas';
         throw error;
       }
 
       const { customToken } = await response.json();
-      
+
       // Logear en Firebase Auth cliente usando el customToken retornado por el backend
       return signInWithCustomToken(auth, customToken);
     } else {
@@ -115,41 +128,53 @@ export const AuthProvider = ({ children }) => {
    * La bandera mustChangePassword se actualiza desde Firestore al recargar.
    */
   const changePasswordReal = async (newPassword) => {
-    if (!user) throw new Error("No hay un usuario autenticado.");
+    if (!user) throw new Error('No hay un usuario autenticado.');
 
-    const FUNCTIONS_BASE_URL = import.meta.env.VITE_FUNCTIONS_BASE_URL || (import.meta.env.DEV ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1' : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
+    const FUNCTIONS_BASE_URL =
+      import.meta.env.VITE_FUNCTIONS_BASE_URL ||
+      (import.meta.env.DEV
+        ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1'
+        : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
     const idToken = await auth.currentUser.getIdToken(true);
 
     if (user.role === 'Estudiante') {
       // Para estudiantes: Llamar a cf_changeStudentPassword (hashing interno en Firestore)
-      const response = await fetch(`${FUNCTIONS_BASE_URL}/cf_changeStudentPassword`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
-        },
-        body: JSON.stringify({
-          studentId: user.uid,
-          newPassword
-        })
-      });
+      const response = await fetch(
+        `${FUNCTIONS_BASE_URL}/cf_changeStudentPassword`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            studentId: user.uid,
+            newPassword,
+          }),
+        }
+      );
 
       if (!response.ok) {
         const errData = await response.json();
-        throw new Error(errData.error || 'Error al actualizar contraseña del alumno.');
+        throw new Error(
+          errData.error || 'Error al actualizar contraseña del alumno.'
+        );
       }
     } else {
       // Para Padres / Personal: el cambio de contraseña se realiza del lado del servidor
       // (cf_completePasswordChange) usando el ID token previo a cualquier modificación,
       // ya que Firebase invalida los tokens emitidos después de cambiar la contraseña.
-      const response = await fetch(`${FUNCTIONS_BASE_URL}/cf_completePasswordChange`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
-        },
-        body: JSON.stringify({ newPassword })
-      });
+      const response = await fetch(
+        `${FUNCTIONS_BASE_URL}/cf_completePasswordChange`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ newPassword }),
+        }
+      );
 
       if (!response.ok) {
         const errData = await response.json();
@@ -161,7 +186,9 @@ export const AuthProvider = ({ children }) => {
       const currentUser = auth.currentUser;
       if (!currentUser?.email) {
         await signOut(auth);
-        throw new Error('La contraseña se actualizó. Iniciá sesión nuevamente.');
+        throw new Error(
+          'La contraseña se actualizó. Iniciá sesión nuevamente.'
+        );
       }
 
       try {
@@ -171,15 +198,29 @@ export const AuthProvider = ({ children }) => {
         );
         await currentUser.getIdToken(true);
       } catch (reauthError) {
-        console.error('Error reautenticando tras el cambio de contraseña:', reauthError);
+        console.error(
+          'Error reautenticando tras el cambio de contraseña:',
+          reauthError
+        );
         await signOut(auth);
-        throw new Error('La contraseña se actualizó. Iniciá sesión nuevamente con la nueva contraseña.');
+        throw new Error(
+          'La contraseña se actualizó. Iniciá sesión nuevamente con la nueva contraseña.'
+        );
       }
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, login: loginReal, logout: logoutReal, changePassword: changePasswordReal, isLoggedIn: !!user, loading }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        login: loginReal,
+        logout: logoutReal,
+        changePassword: changePasswordReal,
+        isLoggedIn: !!user,
+        loading,
+      }}
+    >
       {!loading && children}
     </AuthContext.Provider>
   );

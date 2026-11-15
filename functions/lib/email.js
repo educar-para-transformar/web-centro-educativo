@@ -42,7 +42,7 @@ const nodemailer = __importStar(require("nodemailer"));
  * utilizará el servidor SMTP de producción. De lo contrario, creará una
  * cuenta de prueba en Ethereal Mail y mostrará un enlace para previsualizar el correo.
  */
-async function sendEmail({ to, subject, html }) {
+async function sendEmail({ to, subject, html, attachments, }) {
     const host = process.env.SMTP_HOST;
     const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587;
     const user = process.env.SMTP_USER;
@@ -82,7 +82,8 @@ async function sendEmail({ to, subject, html }) {
         from: '"Educar para Transformar" <noreply@educar-para-transformar.com>',
         to,
         subject,
-        html
+        html,
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
     };
     const info = await transporter.sendMail(mailOptions);
     console.log(`Correo enviado con ID: ${info.messageId}`);

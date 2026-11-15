@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+coverage
+.scannerwork
 *.local
 
 # Editor directories and files
@@ -25,7 +27,17 @@ dist-ssr
 
 .env
 serviceAccountKey.json
+.vercel
 /scratch
+
+docs/backend-vercel.md
 
 # Firebase compiled functions
 functions/lib/
+
+# Cypress artifacts
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
+
+docs/expo-mobile-app.md

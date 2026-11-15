@@ -14,6 +14,8 @@ const ContactForm = () => {
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [status, setStatus] = useState({ type: '', message: '' });
 
   const handleChange = (e) => {
     const { id, value } = e.target;
@@ -27,78 +29,88 @@ const ContactForm = () => {
       ...prev,
       [id]: nuevoValor,
     }));
+    setFieldErrors((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setStatus({ type: '', message: '' });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
+    const errores = {};
+    if (!formData.nombre.trim()) {
+      errores.nombre = 'Ingresá tu nombre completo.';
+    }
+    if (!formData.email.trim()) {
+      errores.email = 'Ingresá tu correo electrónico.';
+    }
+    if (!formData.mensaje.trim()) {
+      errores.mensaje = 'Escribí tu consulta.';
+    }
     if (
-      !formData.nombre.trim() ||
-      !formData.email.trim() ||
-      !formData.mensaje.trim()
+      formData.telefono.trim() &&
+      formData.telefono.replace(/\D/g, '').length < 8
     ) {
-      alert(
-        'Por favor, completa los campos requeridos (Nombre, Correo Electrónico y Mensaje).'
-      );
+      errores.telefono = 'Ingresá al menos 8 dígitos.';
+    }
+
+    if (Object.keys(errores).length > 0) {
+      setFieldErrors(errores);
+      setStatus({
+        type: 'error',
+        message: 'Revisá los campos marcados antes de enviar.',
+      });
       return;
     }
 
-    if (formData.telefono.trim() && formData.telefono.replace(/\D/g, '').length < 8) {
-      alert('Por favor, ingresa un número de teléfono válido (mínimo 8 dígitos).');
-      return;
-    }
-
+    setFieldErrors({});
+    setStatus({ type: '', message: '' });
     setIsSubmitting(true);
 
-    if (GOOGLE_SHEETS_URL) {
-      const params = new URLSearchParams();
-      params.append('nombre', formData.nombre);
-      params.append('telefono', formData.telefono);
-      params.append('email', formData.email);
-      params.append('asunto', formData.asunto);
-      params.append('mensaje', formData.mensaje);
+    try {
+      if (GOOGLE_SHEETS_URL) {
+        const params = new URLSearchParams();
+        params.append('nombre', formData.nombre);
+        params.append('telefono', formData.telefono);
+        params.append('email', formData.email);
+        params.append('asunto', formData.asunto);
+        params.append('mensaje', formData.mensaje);
 
-      fetch(GOOGLE_SHEETS_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: params.toString(),
-      })
-        .then(() => {
-          alert(
-            `¡Gracias ${formData.nombre}! Tu consulta sobre "${formData.asunto}" fue enviada con éxito.`
-          );
-          setFormData({
-            nombre: '',
-            telefono: '',
-            email: '',
-            asunto: 'Inscripciones Ciclo Lectivo',
-            mensaje: '',
-          });
-        })
-        .catch((error) => {
-          console.error('Error:', error);
-          alert('Hubo un error al enviar el mensaje. Inténtalo de nuevo.');
-        })
-        .finally(() => {
-          setIsSubmitting(false);
+        await fetch(GOOGLE_SHEETS_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: params.toString(),
         });
-    } else {
-      setTimeout(() => {
-        alert(
-          `¡Gracias ${formData.nombre}! Recibimos tu consulta sobre "${formData.asunto}". Nos comunicaremos a la brevedad.`
-        );
-        setFormData({
-          nombre: '',
-          telefono: '',
-          email: '',
-          asunto: 'Inscripciones Ciclo Lectivo',
-          mensaje: '',
-        });
-        setIsSubmitting(false);
-      }, 1500);
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+
+      setStatus({
+        type: 'success',
+        message: `¡Gracias ${formData.nombre}! Recibimos tu consulta sobre "${formData.asunto}". Nos comunicaremos a la brevedad.`,
+      });
+      setFormData({
+        nombre: '',
+        telefono: '',
+        email: '',
+        asunto: 'Inscripciones Ciclo Lectivo',
+        mensaje: '',
+      });
+    } catch (error) {
+      console.error('Error:', error);
+      setStatus({
+        type: 'error',
+        message: 'No pudimos enviar tu mensaje. Intentá de nuevo.',
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -111,7 +123,20 @@ const ContactForm = () => {
         brevedad.
       </p>
 
-      <form className="contact-form-element" onSubmit={handleSubmit}>
+      <div aria-live="polite" aria-atomic="true">
+        {status.message && (
+          <p
+            role={status.type === 'error' ? 'alert' : 'status'}
+            className={`contact-form-status ${
+              status.type === 'error' ? 'error' : 'success'
+            }`}
+          >
+            {status.message}
+          </p>
+        )}
+      </div>
+
+      <form className="contact-form-element" onSubmit={handleSubmit} noValidate>
         <div className="contact-form-row">
           <div className="contact-form-group">
             <label className="contact-form-label" htmlFor="nombre">
@@ -120,12 +145,22 @@ const ContactForm = () => {
             <input
               type="text"
               id="nombre"
-              className="contact-form-input"
+              className={`contact-form-input ${
+                fieldErrors.nombre ? 'contact-form-input--error' : ''
+              }`}
               placeholder="Ej. Ana García"
               value={formData.nombre}
               onChange={handleChange}
+              autoComplete="name"
               required
+              aria-invalid={Boolean(fieldErrors.nombre)}
+              aria-describedby={fieldErrors.nombre ? 'nombre-error' : undefined}
             />
+            {fieldErrors.nombre && (
+              <p id="nombre-error" className="contact-form-error" role="alert">
+                {fieldErrors.nombre}
+              </p>
+            )}
           </div>
 
           <div className="contact-form-group">
@@ -135,11 +170,27 @@ const ContactForm = () => {
             <input
               type="tel"
               id="telefono"
-              className="contact-form-input"
+              className={`contact-form-input ${
+                fieldErrors.telefono ? 'contact-form-input--error' : ''
+              }`}
               placeholder="+54 362..."
               value={formData.telefono}
               onChange={handleChange}
+              autoComplete="tel"
+              aria-invalid={Boolean(fieldErrors.telefono)}
+              aria-describedby={
+                fieldErrors.telefono ? 'telefono-error' : undefined
+              }
             />
+            {fieldErrors.telefono && (
+              <p
+                id="telefono-error"
+                className="contact-form-error"
+                role="alert"
+              >
+                {fieldErrors.telefono}
+              </p>
+            )}
           </div>
         </div>
 
@@ -150,12 +201,22 @@ const ContactForm = () => {
           <input
             type="email"
             id="email"
-            className="contact-form-input"
+            className={`contact-form-input ${
+              fieldErrors.email ? 'contact-form-input--error' : ''
+            }`}
             placeholder="ana@ejemplo.com"
             value={formData.email}
             onChange={handleChange}
+            autoComplete="email"
             required
+            aria-invalid={Boolean(fieldErrors.email)}
+            aria-describedby={fieldErrors.email ? 'email-error' : undefined}
           />
+          {fieldErrors.email && (
+            <p id="email-error" className="contact-form-error" role="alert">
+              {fieldErrors.email}
+            </p>
+          )}
         </div>
 
         <div className="contact-form-group">
@@ -185,13 +246,22 @@ const ContactForm = () => {
           </label>
           <textarea
             id="mensaje"
-            className="contact-form-textarea"
+            className={`contact-form-textarea ${
+              fieldErrors.mensaje ? 'contact-form-input--error' : ''
+            }`}
             placeholder="Escribe tu consulta aquí..."
             rows="4"
             value={formData.mensaje}
             onChange={handleChange}
             required
+            aria-invalid={Boolean(fieldErrors.mensaje)}
+            aria-describedby={fieldErrors.mensaje ? 'mensaje-error' : undefined}
           ></textarea>
+          {fieldErrors.mensaje && (
+            <p id="mensaje-error" className="contact-form-error" role="alert">
+              {fieldErrors.mensaje}
+            </p>
+          )}
         </div>
 
         <div className="contact-form-actions">
