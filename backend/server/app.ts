@@ -5,10 +5,10 @@ import express, {
   type RequestHandler,
   type Response,
 } from 'express';
-import { HttpError } from './auth';
-import { cronRecordatorios } from './handlers/cron';
-import * as coreHandlers from './handlers/index';
-import * as pagoHandlers from './handlers/pagos';
+import { HttpError } from './auth.js';
+import { cronRecordatorios } from './handlers/cron.js';
+import * as coreHandlers from './handlers/index.js';
+import * as pagoHandlers from './handlers/pagos.js';
 
 function registerHandlers(
   router: express.Router,

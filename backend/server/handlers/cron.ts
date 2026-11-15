@@ -1,10 +1,10 @@
 import type { Request, Response } from 'express';
-import { HttpError } from '../auth';
+import { HttpError } from '../auth.js';
 import {
   fechaArgentina,
   sc_recordatorioCuotasMensual,
   sc_recordatorioDeudaDia20,
-} from './pagos';
+} from './pagos.js';
 
 export async function cronRecordatorios(req: Request, res: Response) {
   const secret = process.env.CRON_SECRET;

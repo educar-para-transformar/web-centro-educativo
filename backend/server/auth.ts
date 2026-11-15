@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import { auth } from './firebaseAdmin';
+import { auth } from './firebaseAdmin.js';
 
 export class HttpError extends Error {
   constructor(

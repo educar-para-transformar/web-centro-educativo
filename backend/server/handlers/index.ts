@@ -1,9 +1,9 @@
-import { onRequest } from '../firebaseFunctionsCompat';
+import { onRequest } from '../firebaseFunctionsCompat.js';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
-import { auth, db } from '../firebaseAdmin';
-import { sendEmail } from '../email';
+import { auth, db } from '../firebaseAdmin.js';
+import { sendEmail } from '../email.js';
 
 const APP_BASE_URL = (
   process.env.APP_BASE_URL ||

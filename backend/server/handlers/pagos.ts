@@ -1,8 +1,8 @@
-import { onRequest, onSchedule } from '../firebaseFunctionsCompat';
+import { onRequest, onSchedule } from '../firebaseFunctionsCompat.js';
 import { FieldValue, Query, Timestamp } from 'firebase-admin/firestore';
-import { auth, db } from '../firebaseAdmin';
-import { sendEmail } from '../email';
-import { buildFacturaPdf, formatMoney, type FacturaItem } from '../pdf';
+import { auth, db } from '../firebaseAdmin.js';
+import { sendEmail } from '../email.js';
+import { buildFacturaPdf, formatMoney, type FacturaItem } from '../pdf.js';
 
 const MESES = [
   'Enero',
