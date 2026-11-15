@@ -1,7 +1,7 @@
 import { onRequest } from '../firebaseFunctionsCompat.js';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import * as crypto from 'crypto';
-import * as bcrypt from 'bcryptjs';
+import bcrypt from 'bcryptjs';
 import { auth, db } from '../firebaseAdmin.js';
 import { sendEmail } from '../email.js';
 
