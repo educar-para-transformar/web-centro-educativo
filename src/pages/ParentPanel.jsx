@@ -37,6 +37,7 @@ const TABS = [
   { id: 'asistencias', label: 'Asistencias', icon: 'fact_check' },
   { id: 'horarios', label: 'Horarios', icon: 'calendar_month' },
   { id: 'materiales', label: 'Materiales', icon: 'folder_open' },
+  { id: 'cuotas', label: 'Cuotas', icon: 'payments' },
   { id: 'novedades', label: 'Novedades', icon: 'newspaper' },
 ];
 
@@ -105,6 +106,77 @@ const MATERIAL_TIPOS = {
 };
 
 const currentYear = new Date().getFullYear();
+
+const MAX_FILE_BYTES = 700 * 1024;
+
+const currencyFormatter = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'ARS',
+  maximumFractionDigits: 0,
+});
+
+const formatMoney = (value) => currencyFormatter.format(Number(value) || 0);
+
+const ESTADOS_CUOTA = {
+  pagada: {
+    label: 'Pagada',
+    badge: 'bg-green-100 text-green-700',
+    icon: 'check_circle',
+  },
+  parcial: {
+    label: 'Parcial',
+    badge: 'bg-amber-100 text-amber-700',
+    icon: 'pending_actions',
+  },
+  pendiente: {
+    label: 'Pendiente',
+    badge: 'bg-slate-100 text-slate-600',
+    icon: 'schedule',
+  },
+  vencida: {
+    label: 'Vencida',
+    badge: 'bg-red-100 text-red-700',
+    icon: 'error',
+  },
+};
+
+const ESTADOS_PAGO = {
+  pendiente: 'bg-amber-100 text-amber-700',
+  aprobado: 'bg-green-100 text-green-700',
+  rechazado: 'bg-red-100 text-red-700',
+};
+
+const MEDIOS_PAGO = [
+  { id: 'transferencia', label: 'Transferencia' },
+  { id: 'efectivo', label: 'Efectivo' },
+  { id: 'tarjeta', label: 'Tarjeta' },
+  { id: 'mercadopago', label: 'Mercado Pago' },
+];
+
+const leerArchivoBase64 = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+    reader.readAsDataURL(file);
+  });
+
+const descargarBase64 = ({ base64, nombre, mimeType }) => {
+  const binario = atob(base64);
+  const bytes = new Uint8Array(binario.length);
+  for (let i = 0; i < binario.length; i += 1) bytes[i] = binario.charCodeAt(i);
+  const blob = new Blob([bytes], {
+    type: mimeType || 'application/octet-stream',
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = nombre || 'archivo';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
 
 const fetchStudentData = async (endpoint) => {
   const idToken = await auth.currentUser?.getIdToken(true);
@@ -253,6 +325,25 @@ const ParentPanel = () => {
   const [materiales, setMateriales] = useState([]);
   const [isLoadingMateriales, setIsLoadingMateriales] = useState(true);
   const [materialesError, setMaterialesError] = useState('');
+  const [materialDownloading, setMaterialDownloading] = useState('');
+
+  const [cuotas, setCuotas] = useState([]);
+  const [isLoadingCuotas, setIsLoadingCuotas] = useState(false);
+  const [cuotasError, setCuotasError] = useState('');
+  const [cuotaSeleccionada, setCuotaSeleccionada] = useState('');
+  const [pagoForm, setPagoForm] = useState({
+    importe: '',
+    medioPago: 'transferencia',
+    fechaPago: new Date().toISOString().slice(0, 10),
+    observacion: '',
+    comprobanteBase64: '',
+    comprobanteNombre: '',
+    comprobanteMime: '',
+    comprobanteTamano: 0,
+  });
+  const [pagoMessage, setPagoMessage] = useState('');
+  const [pagoError, setPagoError] = useState('');
+  const [isSubmittingPago, setIsSubmittingPago] = useState(false);
 
   const [upcomingEvents, setUpcomingEvents] = useState([]);
 
@@ -503,6 +594,161 @@ const ParentPanel = () => {
     cargarHorarios,
     cargarMateriales,
   ]);
+
+  const cargarCuotas = useCallback(async () => {
+    if (!selectedHijoId) return;
+    setIsLoadingCuotas(true);
+    setCuotasError('');
+    setPagoMessage('');
+    try {
+      const data = await fetchStudentData(
+        `cf_getCuotas?studentId=${encodeURIComponent(selectedHijoId)}&anio=${selectedAnio}`
+      );
+      setCuotas(Array.isArray(data?.cuotas) ? data.cuotas : []);
+    } catch (err) {
+      console.error(err);
+      setCuotasError(err.message || 'Error al cargar las cuotas.');
+      setCuotas([]);
+    } finally {
+      setIsLoadingCuotas(false);
+    }
+  }, [selectedHijoId, selectedAnio]);
+
+  useEffect(() => {
+    if (activeTab === 'cuotas') cargarCuotas();
+  }, [activeTab, cargarCuotas]);
+
+  const handleAbrirPago = (cuota) => {
+    setCuotaSeleccionada(cuota.id);
+    setPagoMessage('');
+    setPagoError('');
+    setPagoForm({
+      importe: String(
+        Math.max(0, Math.round(cuota.saldo || cuota.importe || 0))
+      ),
+      medioPago: 'transferencia',
+      fechaPago: new Date().toISOString().slice(0, 10),
+      observacion: '',
+      comprobanteBase64: '',
+      comprobanteNombre: '',
+      comprobanteMime: '',
+      comprobanteTamano: 0,
+    });
+  };
+
+  const handlePagoChange = (campo, valor) => {
+    setPagoForm((prev) => ({ ...prev, [campo]: valor }));
+  };
+
+  const handleComprobanteChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > MAX_FILE_BYTES) {
+      setPagoError('El comprobante supera el tamaño máximo de 700 KB.');
+      return;
+    }
+    try {
+      const base64 = await leerArchivoBase64(file);
+      setPagoForm((prev) => ({
+        ...prev,
+        comprobanteBase64: base64,
+        comprobanteNombre: file.name,
+        comprobanteMime: file.type || 'application/octet-stream',
+        comprobanteTamano: file.size,
+      }));
+      setPagoError('');
+    } catch (err) {
+      setPagoError(err.message || 'No se pudo leer el comprobante.');
+    }
+  };
+
+  const handleSubmitPago = async (event) => {
+    event.preventDefault();
+    if (!cuotaSeleccionada) return;
+    setPagoMessage('');
+    setPagoError('');
+    if (!pagoForm.comprobanteBase64) {
+      setPagoError('Adjuntá una foto o PDF del comprobante de pago.');
+      return;
+    }
+    const importeNum = Number(pagoForm.importe);
+    if (!Number.isFinite(importeNum) || importeNum <= 0) {
+      setPagoError('El importe debe ser mayor a cero.');
+      return;
+    }
+    setIsSubmittingPago(true);
+    try {
+      const idToken = await auth.currentUser?.getIdToken(true);
+      if (!idToken) throw new Error('La sesión no es válida.');
+      const response = await fetch(`${FUNCTIONS_BASE_URL}/cf_submitPayment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          cuotaId: cuotaSeleccionada,
+          importe: importeNum,
+          medioPago: pagoForm.medioPago,
+          fechaPago: pagoForm.fechaPago,
+          observacion: pagoForm.observacion,
+          comprobanteBase64: pagoForm.comprobanteBase64,
+          comprobanteNombre: pagoForm.comprobanteNombre,
+          comprobanteMime: pagoForm.comprobanteMime,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo enviar el comprobante.');
+      }
+      setPagoMessage(
+        data.message || 'Comprobante enviado. Pendiente de aprobación.'
+      );
+      setCuotaSeleccionada('');
+      setPagoForm((prev) => ({
+        ...prev,
+        comprobanteBase64: '',
+        comprobanteNombre: '',
+        comprobanteTamano: 0,
+        observacion: '',
+      }));
+      cargarCuotas();
+    } catch (err) {
+      console.error(err);
+      setPagoError(err.message || 'No se pudo enviar el comprobante.');
+    } finally {
+      setIsSubmittingPago(false);
+    }
+  };
+
+  const handleDescargarMaterial = async (material) => {
+    if (!material.archivoDisponible) return;
+    setMaterialesError('');
+    setMaterialDownloading(material.id);
+    try {
+      const idToken = await auth.currentUser?.getIdToken(true);
+      if (!idToken) throw new Error('La sesión no es válida.');
+      const params = new URLSearchParams({
+        materialId: material.id,
+        studentId: selectedHijoId,
+      });
+      const response = await fetch(
+        `${FUNCTIONS_BASE_URL}/cf_getMaterialFile?${params.toString()}`,
+        { headers: { Authorization: `Bearer ${idToken}` } }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo descargar el archivo.');
+      }
+      descargarBase64(data);
+    } catch (err) {
+      console.error(err);
+      setMaterialesError(err.message || 'No se pudo descargar el archivo.');
+    } finally {
+      setMaterialDownloading('');
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -971,11 +1217,8 @@ const ParentPanel = () => {
         {materiales.map((mat, idx) => {
           const tipo = MATERIAL_TIPOS[mat.tipo] || MATERIAL_TIPOS.documento;
           return (
-            <a
+            <div
               key={mat.id || idx}
-              href={mat.url || '#'}
-              target="_blank"
-              rel="noopener noreferrer"
               className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 hover:shadow-md transition-shadow flex items-start gap-4"
             >
               <div
@@ -1004,9 +1247,37 @@ const ParentPanel = () => {
                     {mat.materia || mat.materiaNombre}
                   </p>
                 )}
+                <div className="mt-3">
+                  {mat.archivoDisponible ? (
+                    <button
+                      type="button"
+                      onClick={() => handleDescargarMaterial(mat)}
+                      disabled={materialDownloading === mat.id}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-orange-100 hover:bg-orange-200 text-orange-700 text-xs font-bold border-none cursor-pointer disabled:opacity-60"
+                    >
+                      <Icon name="download" className="text-sm" />
+                      {materialDownloading === mat.id
+                        ? 'Descargando...'
+                        : 'Descargar'}
+                    </button>
+                  ) : mat.url ? (
+                    <a
+                      href={mat.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-sky-100 hover:bg-sky-200 text-sky-700 text-xs font-bold no-underline"
+                    >
+                      Abrir enlace
+                      <Icon name="open_in_new" className="text-sm" />
+                    </a>
+                  ) : (
+                    <span className="text-xs text-slate-400">
+                      Sin archivo adjunto
+                    </span>
+                  )}
+                </div>
               </div>
-              <Icon name="open_in_new" className="text-slate-400" />
-            </a>
+            </div>
           );
         })}
       </div>
@@ -1073,6 +1344,267 @@ const ParentPanel = () => {
     );
   };
 
+  const renderCuotas = () => {
+    if (isLoadingCuotas) {
+      return (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 text-center">
+          <span className="material-symbols-outlined animate-spin text-3xl text-orange-500">
+            progress_activity
+          </span>
+          <p className="mt-2 text-slate-500">Cargando cuotas...</p>
+        </div>
+      );
+    }
+    if (cuotasError) {
+      return (
+        <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-6 text-center text-red-600">
+          <p>{cuotasError}</p>
+          <button
+            type="button"
+            onClick={cargarCuotas}
+            className="mt-3 px-4 py-2 rounded-full bg-red-600 text-white text-sm font-bold border-none cursor-pointer"
+          >
+            Reintentar
+          </button>
+        </div>
+      );
+    }
+    if (cuotas.length === 0) {
+      return (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 text-center text-slate-500">
+          <Icon name="payments" className="text-4xl mb-2" />
+          <p>No hay cuotas registradas para este ciclo lectivo.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {pagoMessage && (
+          <div className="bg-green-50 border-l-4 border-green-500 p-4 rounded-xl text-green-800 text-sm font-medium">
+            {pagoMessage}
+          </div>
+        )}
+
+        {cuotas.map((cuota) => {
+          const estado = ESTADOS_CUOTA[cuota.estado] || ESTADOS_CUOTA.pendiente;
+          const abierta = cuotaSeleccionada === cuota.id;
+          return (
+            <article
+              key={cuota.id}
+              className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden"
+            >
+              <div className="p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-headline font-semibold text-lg text-slate-800">
+                      {cuota.descripcion || cuota.concepto || 'Cuota'}
+                    </h3>
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-xs font-bold ${estado.badge}`}
+                    >
+                      {estado.label}
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-500 mt-1">
+                    {cuota.periodo} · Vence {formatFecha(cuota.vencimientoISO)}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      Importe
+                    </p>
+                    <p className="font-bold text-slate-800">
+                      {formatMoney(cuota.importe)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      Pagado
+                    </p>
+                    <p className="font-bold text-green-700">
+                      {formatMoney(cuota.pagado)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      Saldo
+                    </p>
+                    <p className="font-bold text-red-700">
+                      {formatMoney(cuota.saldo)}
+                    </p>
+                  </div>
+                </div>
+
+                {cuota.saldo > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      abierta
+                        ? setCuotaSeleccionada('')
+                        : handleAbrirPago(cuota)
+                    }
+                    className="shrink-0 inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-orange-600 hover:bg-orange-700 text-white text-sm font-bold border-none cursor-pointer"
+                  >
+                    <Icon name="upload_file" className="text-base" />
+                    {abierta ? 'Cancelar' : 'Subir comprobante'}
+                  </button>
+                )}
+              </div>
+
+              {cuota.pagosPendientes > 0 && (
+                <div className="px-5 pb-4 text-sm text-amber-700 font-medium">
+                  Tenés {cuota.pagosPendientes} comprobante
+                  {cuota.pagosPendientes === 1 ? '' : 's'} pendiente
+                  {cuota.pagosPendientes === 1 ? '' : 's'} de aprobación por{' '}
+                  {formatMoney(cuota.pendienteRevision)}.
+                </div>
+              )}
+
+              {cuota.pagos?.length > 0 && (
+                <div className="border-t border-slate-100 divide-y divide-slate-100">
+                  {cuota.pagos.map((pago) => (
+                    <div
+                      key={pago.id}
+                      className="px-5 py-3 flex flex-wrap items-center justify-between gap-2 text-sm"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs text-slate-500">
+                          {formatFecha(pago.fechaPagoISO)}
+                        </span>
+                        <span className="font-semibold text-slate-700">
+                          {formatMoney(pago.importe)}
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          {pago.medioPago}
+                        </span>
+                      </div>
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${ESTADOS_PAGO[pago.estado] || ESTADOS_PAGO.pendiente}`}
+                      >
+                        {pago.estado}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {abierta && (
+                <form
+                  onSubmit={handleSubmitPago}
+                  className="border-t border-slate-100 bg-slate-50/60 p-5 space-y-4"
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                        Importe
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={pagoForm.importe}
+                        onChange={(e) =>
+                          handlePagoChange('importe', e.target.value)
+                        }
+                        className="w-full px-4 py-2.5 bg-white border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                        Medio de pago
+                      </label>
+                      <select
+                        value={pagoForm.medioPago}
+                        onChange={(e) =>
+                          handlePagoChange('medioPago', e.target.value)
+                        }
+                        className="w-full px-4 py-2.5 bg-white border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none text-sm"
+                      >
+                        {MEDIOS_PAGO.map((medio) => (
+                          <option key={medio.id} value={medio.id}>
+                            {medio.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                        Fecha de pago
+                      </label>
+                      <input
+                        type="date"
+                        value={pagoForm.fechaPago}
+                        onChange={(e) =>
+                          handlePagoChange('fechaPago', e.target.value)
+                        }
+                        className="w-full px-4 py-2.5 bg-white border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Comprobante (máx. 700 KB) *
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={handleComprobanteChange}
+                      className="w-full text-sm text-slate-600 file:mr-4 file:px-4 file:py-2 file:rounded-full file:border-0 file:bg-orange-100 file:text-orange-700 file:font-bold cursor-pointer"
+                    />
+                    {pagoForm.comprobanteNombre && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        {pagoForm.comprobanteNombre} ·{' '}
+                        {Math.round(pagoForm.comprobanteTamano / 1024)} KB
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Observación
+                    </label>
+                    <input
+                      type="text"
+                      value={pagoForm.observacion}
+                      onChange={(e) =>
+                        handlePagoChange('observacion', e.target.value)
+                      }
+                      className="w-full px-4 py-2.5 bg-white border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none text-sm"
+                      placeholder="Número de operación, sucursal, etc."
+                    />
+                  </div>
+
+                  {pagoError && (
+                    <p className="text-sm text-red-700 font-bold bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                      {pagoError}
+                    </p>
+                  )}
+
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={isSubmittingPago}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-orange-600 hover:bg-orange-700 text-white text-sm font-bold border-none cursor-pointer disabled:opacity-60"
+                    >
+                      <Icon
+                        name={isSubmittingPago ? 'hourglass_top' : 'send'}
+                        className="text-base"
+                      />
+                      {isSubmittingPago ? 'Enviando...' : 'Enviar comprobante'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    );
+  };
+
   const renderContent = () => {
     switch (activeTab) {
       case 'boletin':
@@ -1085,6 +1617,8 @@ const ParentPanel = () => {
         return renderHorarios();
       case 'materiales':
         return renderMateriales();
+      case 'cuotas':
+        return renderCuotas();
       case 'novedades':
         return renderNovedades();
       default:

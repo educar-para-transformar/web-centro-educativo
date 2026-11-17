@@ -50,7 +50,9 @@ __exportStar(require("./pagos"), exports);
 // p. ej. cuando se carga primero el módulo de pagos).
 const app = admin.apps.length ? admin.app() : admin.initializeApp();
 const db = admin.firestore(app);
-const APP_BASE_URL = (process.env.APP_BASE_URL || process.env.REDIRECT_URL || 'http://localhost:5173')
+const APP_BASE_URL = (process.env.APP_BASE_URL ||
+    process.env.REDIRECT_URL ||
+    'http://localhost:5173')
     .replace(/\/+$/, '')
     .replace(/\/auth-action$/, '');
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
@@ -102,7 +104,10 @@ async function invalidatePasswordResetTokens(studentId) {
     let cambios = 0;
     snapshot.docs.forEach((doc) => {
         if (!doc.data().used) {
-            batch.update(doc.ref, { used: true, usedAt: firestore_1.FieldValue.serverTimestamp() });
+            batch.update(doc.ref, {
+                used: true,
+                usedAt: firestore_1.FieldValue.serverTimestamp(),
+            });
             cambios++;
         }
     });
@@ -152,7 +157,8 @@ async function generateUniqueStudentIdLogin() {
     while (!unique) {
         const randomDigits = Math.floor(10000 + Math.random() * 90000); // 5 dígitos aleatorios
         studentID = `EST-${year}-${randomDigits}`;
-        const snapshot = await db.collection('students')
+        const snapshot = await db
+            .collection('students')
             .where('studentID_login', '==', studentID)
             .limit(1)
             .get();
@@ -171,19 +177,29 @@ exports.cf_createParentAndStudents = (0, https_1.onRequest)({ cors: true, invoke
         // Validar autorización
         const callerClaims = await verifyAuth(req);
         if (callerClaims.role !== 'user_admin') {
-            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            res
+                .status(403)
+                .send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
             return;
         }
         const { parentEmail, parentName, parentDni, students } = req.body;
-        if (!parentEmail || !parentDni || !parentName || !students || !Array.isArray(students)) {
-            res.status(400).send({ error: 'Faltan parámetros requeridos (parentEmail, parentDni, parentName, students).' });
+        if (!parentEmail ||
+            !parentDni ||
+            !parentName ||
+            !students ||
+            !Array.isArray(students)) {
+            res
+                .status(400)
+                .send({
+                error: 'Faltan parámetros requeridos (parentEmail, parentDni, parentName, students).',
+            });
             return;
         }
         // Crear usuario del Padre en Auth usando su DNI como contraseña inicial
         const parentUser = await admin.auth().createUser({
             email: parentEmail,
             emailVerified: true,
-            password: parentDni.trim()
+            password: parentDni.trim(),
         });
         // Establecer Custom Claim para el Padre
         await admin.auth().setCustomUserClaims(parentUser.uid, { role: 'Padre' });
@@ -210,17 +226,20 @@ exports.cf_createParentAndStudents = (0, https_1.onRequest)({ cors: true, invoke
                 genero: student.genero || '',
                 fechaNacimiento: student.fechaNacimiento || '',
                 nivel: student.nivel || 'inicial',
-                createdAt: firestore_1.FieldValue.serverTimestamp()
+                createdAt: firestore_1.FieldValue.serverTimestamp(),
             });
             studentDocIds.push(studentRef.id);
             createdStudentsInfo.push({
                 id: studentRef.id,
                 studentID_login,
-                nombre: student.nombre
+                nombre: student.nombre,
             });
         }
         // Guardar los datos del Padre en Firestore
-        await db.collection('users').doc(parentUser.uid).set({
+        await db
+            .collection('users')
+            .doc(parentUser.uid)
+            .set({
             role: 'Padre',
             email: parentEmail,
             nombre: parentName || '',
@@ -228,11 +247,11 @@ exports.cf_createParentAndStudents = (0, https_1.onRequest)({ cors: true, invoke
             mustChangePassword: true,
             emailInvalid: false,
             studentIds: studentDocIds,
-            createdAt: firestore_1.FieldValue.serverTimestamp()
+            createdAt: firestore_1.FieldValue.serverTimestamp(),
         });
         res.status(201).send({
             parentUid: parentUser.uid,
-            students: createdStudentsInfo
+            students: createdStudentsInfo,
         });
     }
     catch (error) {
@@ -249,13 +268,18 @@ exports.cf_resendActivationLink = (0, https_1.onRequest)({ cors: true, invoker: 
         const callerClaims = await verifyAuth(req);
         const { targetType, targetId } = req.body;
         if (!targetType || !targetId) {
-            res.status(400).send({ error: 'Faltan parámetros requeridos (targetType, targetId).' });
+            res
+                .status(400)
+                .send({
+                error: 'Faltan parámetros requeridos (targetType, targetId).',
+            });
             return;
         }
         const redirectUrl = process.env.REDIRECT_URL || 'http://localhost:5173/auth-action';
         if (targetType === 'parent') {
             // Solo el propio padre o un user_admin puede reenviar la activación del padre
-            if (callerClaims.role !== 'user_admin' && callerClaims.uid !== targetId) {
+            if (callerClaims.role !== 'user_admin' &&
+                callerClaims.uid !== targetId) {
                 res.status(403).send({ error: 'Permisos insuficientes.' });
                 return;
             }
@@ -268,9 +292,11 @@ exports.cf_resendActivationLink = (0, https_1.onRequest)({ cors: true, invoker: 
             const parentEmail = parentData?.email;
             const actionCodeSettings = {
                 url: redirectUrl,
-                handleCodeInApp: true
+                handleCodeInApp: true,
             };
-            const emailLink = await admin.auth().generateEmailVerificationLink(parentEmail, actionCodeSettings);
+            const emailLink = await admin
+                .auth()
+                .generateEmailVerificationLink(parentEmail, actionCodeSettings);
             const htmlContent = `
         <h1>Verificación de Correo - Educar para Transformar</h1>
         <p>Hola ${parentData?.nombre || 'Tutor'},</p>
@@ -280,13 +306,20 @@ exports.cf_resendActivationLink = (0, https_1.onRequest)({ cors: true, invoker: 
             await (0, email_1.sendEmail)({
                 to: parentEmail,
                 subject: 'Enlace de Verificación de Cuenta - Educar para Transformar',
-                html: htmlContent
+                html: htmlContent,
             });
             // Si estaba marcado como inválido, limpiarlo
             if (parentData?.emailInvalid) {
-                await db.collection('users').doc(targetId).update({ emailInvalid: false });
+                await db
+                    .collection('users')
+                    .doc(targetId)
+                    .update({ emailInvalid: false });
             }
-            res.status(200).send({ message: 'Enlace de verificación enviado con éxito al tutor.' });
+            res
+                .status(200)
+                .send({
+                message: 'Enlace de verificación enviado con éxito al tutor.',
+            });
         }
         else if (targetType === 'student') {
             const studentDoc = await db.collection('students').doc(targetId).get();
@@ -296,7 +329,8 @@ exports.cf_resendActivationLink = (0, https_1.onRequest)({ cors: true, invoker: 
             }
             const studentData = studentDoc.data();
             // Solo user_admin o el propio padre asociado pueden reenviar el token de este estudiante
-            if (callerClaims.role !== 'user_admin' && callerClaims.uid !== studentData?.parentId) {
+            if (callerClaims.role !== 'user_admin' &&
+                callerClaims.uid !== studentData?.parentId) {
                 res.status(403).send({ error: 'Permisos insuficientes.' });
                 return;
             }
@@ -304,7 +338,7 @@ exports.cf_resendActivationLink = (0, https_1.onRequest)({ cors: true, invoker: 
             const activationTokenExpires = firestore_1.Timestamp.fromDate(new Date(Date.now() + 48 * 60 * 60 * 1000));
             await db.collection('students').doc(targetId).update({
                 activationToken,
-                activationTokenExpires
+                activationTokenExpires,
             });
             const customLink = `${redirectUrl}?mode=activateStudent&token=${activationToken}&studentId=${targetId}`;
             const htmlContent = `
@@ -318,12 +352,18 @@ exports.cf_resendActivationLink = (0, https_1.onRequest)({ cors: true, invoker: 
             await (0, email_1.sendEmail)({
                 to: studentData?.emailPadre,
                 subject: `Enlace de Activación para ${studentData?.nombre || 'Estudiante'} - Educar para Transformar`,
-                html: htmlContent
+                html: htmlContent,
             });
-            res.status(200).send({ message: 'Enlace de activación de estudiante enviado al correo del tutor.' });
+            res
+                .status(200)
+                .send({
+                message: 'Enlace de activación de estudiante enviado al correo del tutor.',
+            });
         }
         else {
-            res.status(400).send({ error: 'targetType inválido. Debe ser parent o student.' });
+            res
+                .status(400)
+                .send({ error: 'targetType inválido. Debe ser parent o student.' });
         }
     }
     catch (error) {
@@ -339,23 +379,29 @@ exports.cf_updateParentEmailAndResend = (0, https_1.onRequest)({ cors: true, inv
     try {
         const callerClaims = await verifyAuth(req);
         if (callerClaims.role !== 'user_admin') {
-            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            res
+                .status(403)
+                .send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
             return;
         }
         const { parentUid, newEmail } = req.body;
         if (!parentUid || !newEmail) {
-            res.status(400).send({ error: 'Faltan parámetros requeridos (parentUid, newEmail).' });
+            res
+                .status(400)
+                .send({
+                error: 'Faltan parámetros requeridos (parentUid, newEmail).',
+            });
             return;
         }
         // 1. Actualizar en Firebase Authentication
         await admin.auth().updateUser(parentUid, {
             email: newEmail,
-            emailVerified: false
+            emailVerified: false,
         });
         // 2. Actualizar en Firestore users
         await db.collection('users').doc(parentUid).update({
             email: newEmail,
-            emailInvalid: false
+            emailInvalid: false,
         });
         // 3. Buscar hijos y actualizar emailPadre
         const parentDoc = await db.collection('users').doc(parentUid).get();
@@ -372,9 +418,11 @@ exports.cf_updateParentEmailAndResend = (0, https_1.onRequest)({ cors: true, inv
         const redirectUrl = process.env.REDIRECT_URL || 'http://localhost:5173/auth-action';
         const actionCodeSettings = {
             url: redirectUrl,
-            handleCodeInApp: true
+            handleCodeInApp: true,
         };
-        const emailLink = await admin.auth().generateEmailVerificationLink(newEmail, actionCodeSettings);
+        const emailLink = await admin
+            .auth()
+            .generateEmailVerificationLink(newEmail, actionCodeSettings);
         const htmlContent = `
       <h1>Actualización de Correo y Activación de Cuenta</h1>
       <p>Hola ${parentDoc.data()?.nombre || 'Tutor'},</p>
@@ -384,9 +432,13 @@ exports.cf_updateParentEmailAndResend = (0, https_1.onRequest)({ cors: true, inv
         await (0, email_1.sendEmail)({
             to: newEmail,
             subject: 'Activación de Cuenta de Tutor - Educar para Transformar',
-            html: htmlContent
+            html: htmlContent,
         });
-        res.status(200).send({ message: 'Correo actualizado y nuevo enlace de activación enviado exitosamente.' });
+        res
+            .status(200)
+            .send({
+            message: 'Correo actualizado y nuevo enlace de activación enviado exitosamente.',
+        });
     }
     catch (error) {
         console.error('Error en cf_updateParentEmailAndResend:', error);
@@ -401,7 +453,11 @@ exports.cf_activateStudentAccount = (0, https_1.onRequest)({ cors: true, invoker
     try {
         const { studentId, token, newPassword } = req.body;
         if (!studentId || !token || !newPassword) {
-            res.status(400).send({ error: 'Faltan parámetros requeridos (studentId, token, newPassword).' });
+            res
+                .status(400)
+                .send({
+                error: 'Faltan parámetros requeridos (studentId, token, newPassword).',
+            });
             return;
         }
         const studentRef = db.collection('students').doc(studentId);
@@ -429,9 +485,13 @@ exports.cf_activateStudentAccount = (0, https_1.onRequest)({ cors: true, invoker
             hashedPassword,
             status: 'active',
             activationToken: null,
-            activationTokenExpires: null
+            activationTokenExpires: null,
         });
-        res.status(200).send({ message: 'Cuenta del estudiante activada con éxito. Ya puede iniciar sesión.' });
+        res
+            .status(200)
+            .send({
+            message: 'Cuenta del estudiante activada con éxito. Ya puede iniciar sesión.',
+        });
     }
     catch (error) {
         console.error('Error en cf_activateStudentAccount:', error);
@@ -446,35 +506,46 @@ exports.cf_loginStudent = (0, https_1.onRequest)({ cors: true, invoker: 'public'
     try {
         const { studentID_login, password } = req.body;
         if (!studentID_login || !password) {
-            res.status(400).send({ error: 'Faltan parámetros (studentID_login, password).' });
+            res
+                .status(400)
+                .send({ error: 'Faltan parámetros (studentID_login, password).' });
             return;
         }
         // Buscar estudiante por su ID de inicio de sesión
-        const snapshot = await db.collection('students')
+        const snapshot = await db
+            .collection('students')
             .where('studentID_login', '==', studentID_login)
             .limit(1)
             .get();
         if (snapshot.empty) {
-            res.status(401).send({ error: 'ID de estudiante o contraseña incorrectos.' });
+            res
+                .status(401)
+                .send({ error: 'ID de estudiante o contraseña incorrectos.' });
             return;
         }
         const studentDoc = snapshot.docs[0];
         const studentData = studentDoc.data();
         // Validar que la cuenta esté activa
         if (studentData.status !== 'active' || !studentData.hashedPassword) {
-            res.status(400).send({ error: 'La cuenta del estudiante no ha sido activada o no tiene contraseña.' });
+            res
+                .status(400)
+                .send({
+                error: 'La cuenta del estudiante no ha sido activada o no tiene contraseña.',
+            });
             return;
         }
         // Comparar contraseña con el hash guardado
         const match = await bcrypt.compare(password, studentData.hashedPassword);
         if (!match) {
-            res.status(401).send({ error: 'ID de estudiante o contraseña incorrectos.' });
+            res
+                .status(401)
+                .send({ error: 'ID de estudiante o contraseña incorrectos.' });
             return;
         }
         // Crear Custom Token de Firebase Auth. Usamos el ID del documento de Firestore como UID del Auth del estudiante.
         const customToken = await admin.auth().createCustomToken(studentDoc.id, {
             role: 'Estudiante',
-            studentId: studentID_login
+            studentId: studentID_login,
         });
         res.status(200).send({ customToken });
     }
@@ -492,7 +563,9 @@ exports.cf_resetStudentPassword = (0, https_1.onRequest)({ cors: true, invoker: 
         const callerClaims = await verifyAuth(req);
         const { studentId } = req.body;
         if (!studentId) {
-            res.status(400).send({ error: 'Faltan parámetros requeridos (studentId).' });
+            res
+                .status(400)
+                .send({ error: 'Faltan parámetros requeridos (studentId).' });
             return;
         }
         const studentIdStr = String(studentId);
@@ -504,7 +577,8 @@ exports.cf_resetStudentPassword = (0, https_1.onRequest)({ cors: true, invoker: 
         }
         const studentData = studentDoc.data();
         // Validar permisos: Requiere user_admin o ser el padre del estudiante
-        if (callerClaims.role !== 'user_admin' && callerClaims.uid !== studentData?.parentId) {
+        if (callerClaims.role !== 'user_admin' &&
+            callerClaims.uid !== studentData?.parentId) {
             res.status(403).send({ error: 'Permisos insuficientes.' });
             return;
         }
@@ -533,9 +607,13 @@ exports.cf_resetStudentPassword = (0, https_1.onRequest)({ cors: true, invoker: 
         await (0, email_1.sendEmail)({
             to: studentData?.emailPadre,
             subject: `Restablecimiento de Contraseña para ${studentData?.nombre || 'Estudiante'} - Educar para Transformar`,
-            html: htmlContent
+            html: htmlContent,
         });
-        res.status(200).send({ message: 'Enlace de restablecimiento de contraseña enviado al correo del tutor.' });
+        res
+            .status(200)
+            .send({
+            message: 'Enlace de restablecimiento de contraseña enviado al correo del tutor.',
+        });
     }
     catch (error) {
         console.error('Error en cf_resetStudentPassword:', error);
@@ -550,17 +628,27 @@ exports.cf_createAdministrativeUser = (0, https_1.onRequest)({ cors: true, invok
     try {
         const callerClaims = await verifyAuth(req);
         if (callerClaims.role !== 'user_admin') {
-            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            res
+                .status(403)
+                .send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
             return;
         }
         const { email, name, role, dni } = req.body;
         if (!email || !name || !role || !dni) {
-            res.status(400).send({ error: 'Faltan parámetros requeridos (email, name, role, dni).' });
+            res
+                .status(400)
+                .send({
+                error: 'Faltan parámetros requeridos (email, name, role, dni).',
+            });
             return;
         }
         const allowedRoles = ['user_admin', 'Staff', 'Administrativo'];
         if (!allowedRoles.includes(role)) {
-            res.status(400).send({ error: 'Rol inválido. Debe ser user_admin, Staff o Administrativo.' });
+            res
+                .status(400)
+                .send({
+                error: 'Rol inválido. Debe ser user_admin, Staff o Administrativo.',
+            });
             return;
         }
         // Crear el usuario en Auth usando su DNI como contraseña inicial
@@ -568,7 +656,7 @@ exports.cf_createAdministrativeUser = (0, https_1.onRequest)({ cors: true, invok
             email,
             password: dni.trim(),
             emailVerified: true,
-            displayName: name
+            displayName: name,
         });
         // Asignar Custom Claim
         await admin.auth().setCustomUserClaims(userRecord.uid, { role });
@@ -580,10 +668,10 @@ exports.cf_createAdministrativeUser = (0, https_1.onRequest)({ cors: true, invok
             dni: dni.trim(),
             mustChangePassword: true,
             emailInvalid: false,
-            createdAt: firestore_1.FieldValue.serverTimestamp()
+            createdAt: firestore_1.FieldValue.serverTimestamp(),
         });
         res.status(201).send({
-            uid: userRecord.uid
+            uid: userRecord.uid,
         });
     }
     catch (error) {
@@ -599,12 +687,16 @@ exports.cf_resetUserPasswordToDni = (0, https_1.onRequest)({ cors: true, invoker
     try {
         const callerClaims = await verifyAuth(req);
         if (callerClaims.role !== 'user_admin') {
-            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            res
+                .status(403)
+                .send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
             return;
         }
         const { userId, userType } = req.body;
         if (!userId || !userType) {
-            res.status(400).send({ error: 'Faltan parámetros requeridos (userId, userType).' });
+            res
+                .status(400)
+                .send({ error: 'Faltan parámetros requeridos (userId, userType).' });
             return;
         }
         if (userType === 'parent' || userType === 'administrative') {
@@ -617,18 +709,24 @@ exports.cf_resetUserPasswordToDni = (0, https_1.onRequest)({ cors: true, invoker
             const userData = userDoc.data();
             const dni = userData?.dni;
             if (!dni) {
-                res.status(400).send({ error: 'El usuario no tiene registrado un DNI.' });
+                res
+                    .status(400)
+                    .send({ error: 'El usuario no tiene registrado un DNI.' });
                 return;
             }
             // Restablecer contraseña en Auth al DNI
             await admin.auth().updateUser(userId, {
-                password: dni.trim()
+                password: dni.trim(),
             });
             // Forzar cambio de contraseña
             await userRef.update({
-                mustChangePassword: true
+                mustChangePassword: true,
             });
-            res.status(200).send({ message: 'Contraseña del usuario restablecida exitosamente a su DNI.' });
+            res
+                .status(200)
+                .send({
+                message: 'Contraseña del usuario restablecida exitosamente a su DNI.',
+            });
         }
         else if (userType === 'student') {
             const studentRef = db.collection('students').doc(userId);
@@ -640,7 +738,9 @@ exports.cf_resetUserPasswordToDni = (0, https_1.onRequest)({ cors: true, invoker
             const studentData = studentDoc.data();
             const dni = studentData?.dni;
             if (!dni) {
-                res.status(400).send({ error: 'El estudiante no tiene registrado un DNI.' });
+                res
+                    .status(400)
+                    .send({ error: 'El estudiante no tiene registrado un DNI.' });
                 return;
             }
             // Generar nuevo hash bcrypt para el DNI del alumno
@@ -649,13 +749,21 @@ exports.cf_resetUserPasswordToDni = (0, https_1.onRequest)({ cors: true, invoker
             // Actualizar en Firestore
             await studentRef.update({
                 hashedPassword,
-                mustChangePassword: true
+                mustChangePassword: true,
             });
             await invalidatePasswordResetTokens(String(userId));
-            res.status(200).send({ message: 'Contraseña del estudiante restablecida exitosamente a su DNI.' });
+            res
+                .status(200)
+                .send({
+                message: 'Contraseña del estudiante restablecida exitosamente a su DNI.',
+            });
         }
         else {
-            res.status(400).send({ error: 'userType inválido. Debe ser parent, administrative o student.' });
+            res
+                .status(400)
+                .send({
+                error: 'userType inválido. Debe ser parent, administrative o student.',
+            });
         }
     }
     catch (error) {
@@ -672,11 +780,16 @@ exports.cf_changeStudentPassword = (0, https_1.onRequest)({ cors: true, invoker:
         const callerClaims = await verifyAuth(req);
         const { studentId, newPassword } = req.body;
         if (!studentId || !newPassword) {
-            res.status(400).send({ error: 'Faltan parámetros requeridos (studentId, newPassword).' });
+            res
+                .status(400)
+                .send({
+                error: 'Faltan parámetros requeridos (studentId, newPassword).',
+            });
             return;
         }
         // Permitir si es el propio estudiante o si es un administrador
-        if (callerClaims.role !== 'user_admin' && callerClaims.uid !== studentId) {
+        if (callerClaims.role !== 'user_admin' &&
+            callerClaims.uid !== studentId) {
             res.status(403).send({ error: 'Permisos insuficientes.' });
             return;
         }
@@ -684,10 +797,12 @@ exports.cf_changeStudentPassword = (0, https_1.onRequest)({ cors: true, invoker:
         const hashedPassword = await bcrypt.hash(newPassword, salt);
         await db.collection('students').doc(studentId).update({
             hashedPassword,
-            mustChangePassword: false
+            mustChangePassword: false,
         });
         await invalidatePasswordResetTokens(String(studentId));
-        res.status(200).send({ message: 'Contraseña del estudiante actualizada con éxito.' });
+        res
+            .status(200)
+            .send({ message: 'Contraseña del estudiante actualizada con éxito.' });
     }
     catch (error) {
         console.error('Error en cf_changeStudentPassword:', error);
@@ -707,7 +822,11 @@ exports.cf_updateUserProfile = (0, https_1.onRequest)({ cors: true, invoker: 'pu
         }
         const { targetId, targetType, fields } = req.body;
         if (!targetId || !targetType || !fields) {
-            res.status(400).send({ error: 'Faltan parámetros requeridos (targetId, targetType, fields).' });
+            res
+                .status(400)
+                .send({
+                error: 'Faltan parámetros requeridos (targetId, targetType, fields).',
+            });
             return;
         }
         if (targetType === 'parent' || targetType === 'administrative') {
@@ -721,16 +840,18 @@ exports.cf_updateUserProfile = (0, https_1.onRequest)({ cors: true, invoker: 'pu
             if (fields.email) {
                 await admin.auth().updateUser(targetId, {
                     email: fields.email,
-                    displayName: fields.nombre || undefined
+                    displayName: fields.nombre || undefined,
                 });
             }
             else if (fields.nombre) {
                 await admin.auth().updateUser(targetId, {
-                    displayName: fields.nombre
+                    displayName: fields.nombre,
                 });
             }
             await userRef.update(fields);
-            res.status(200).send({ message: 'Perfil de usuario actualizado exitosamente.' });
+            res
+                .status(200)
+                .send({ message: 'Perfil de usuario actualizado exitosamente.' });
         }
         else if (targetType === 'student') {
             const studentRef = db.collection('students').doc(targetId);
@@ -740,10 +861,16 @@ exports.cf_updateUserProfile = (0, https_1.onRequest)({ cors: true, invoker: 'pu
                 return;
             }
             await studentRef.update(fields);
-            res.status(200).send({ message: 'Perfil de estudiante actualizado exitosamente.' });
+            res
+                .status(200)
+                .send({ message: 'Perfil de estudiante actualizado exitosamente.' });
         }
         else {
-            res.status(400).send({ error: 'targetType inválido. Debe ser parent, administrative o student.' });
+            res
+                .status(400)
+                .send({
+                error: 'targetType inválido. Debe ser parent, administrative o student.',
+            });
         }
     }
     catch (error) {
@@ -766,18 +893,34 @@ exports.cf_completePasswordChange = (0, https_1.onRequest)({ cors: true, invoker
         // emitido después de un updatePassword del cliente (que Firebase invalida).
         if (newPassword) {
             if (typeof newPassword !== 'string' || newPassword.length < 6) {
-                res.status(400).send({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
+                res
+                    .status(400)
+                    .send({
+                    error: 'La nueva contraseña debe tener al menos 6 caracteres.',
+                });
                 return;
             }
-            await admin.auth().updateUser(callerClaims.uid, { password: newPassword });
+            await admin
+                .auth()
+                .updateUser(callerClaims.uid, { password: newPassword });
         }
         if (role === 'Estudiante') {
-            await db.collection('students').doc(callerClaims.uid).update({ mustChangePassword: false });
+            await db
+                .collection('students')
+                .doc(callerClaims.uid)
+                .update({ mustChangePassword: false });
         }
         else {
-            await db.collection('users').doc(callerClaims.uid).update({ mustChangePassword: false });
+            await db
+                .collection('users')
+                .doc(callerClaims.uid)
+                .update({ mustChangePassword: false });
         }
-        res.status(200).send({ message: 'Estado de cambio de contraseña registrado exitosamente.' });
+        res
+            .status(200)
+            .send({
+            message: 'Estado de cambio de contraseña registrado exitosamente.',
+        });
     }
     catch (error) {
         console.error('Error en cf_completePasswordChange:', error);
@@ -795,7 +938,11 @@ exports.cf_getStudentGrades = (0, https_1.onRequest)({ cors: true, invoker: 'pub
         const callerClaims = await verifyAuth(req);
         const role = callerClaims.role;
         if (!['Estudiante', 'Padre', 'user_admin'].includes(role)) {
-            res.status(403).send({ error: 'Permisos insuficientes: Solo el alumno, su tutor o un administrador puede consultar notas.' });
+            res
+                .status(403)
+                .send({
+                error: 'Permisos insuficientes: Solo el alumno, su tutor o un administrador puede consultar notas.',
+            });
             return;
         }
         const studentUid = await resolveAuthorizedStudentUid(callerClaims, req.query.studentId);
@@ -807,7 +954,8 @@ exports.cf_getStudentGrades = (0, https_1.onRequest)({ cors: true, invoker: 'pub
         }
         const studentData = studentDoc.data() || {};
         const anio = Number(req.query.anio) || new Date().getFullYear();
-        const califSnap = await db.collection('calificaciones')
+        const califSnap = await db
+            .collection('calificaciones')
             .where('studentId', '==', studentUid)
             .where('anio', '==', anio)
             .get();
@@ -817,16 +965,23 @@ exports.cf_getStudentGrades = (0, https_1.onRequest)({ cors: true, invoker: 'pub
             const data = doc.data();
             const materiaId = data.materiaId;
             if (!porMateria.has(materiaId)) {
-                porMateria.set(materiaId, { materia: data.materia || materiaId, trimestres: { 1: [], 2: [], 3: [] } });
+                porMateria.set(materiaId, {
+                    materia: data.materia || materiaId,
+                    trimestres: { 1: [], 2: [], 3: [] },
+                });
             }
             const entry = porMateria.get(materiaId);
             const trim = Number(data.trimestre);
-            if ((data.notas && Array.isArray(data.notas))) {
+            if (data.notas && Array.isArray(data.notas)) {
                 entry.trimestres[trim] = entry.trimestres[trim] || [];
-                entry.trimestres[trim].push(...data.notas.map((n) => Number(n)).filter((n) => !isNaN(n)));
+                entry.trimestres[trim].push(...data.notas
+                    .map((n) => Number(n))
+                    .filter((n) => !isNaN(n)));
             }
         }
-        const calcularPromedio = (notas) => notas.length > 0 ? Math.round((notas.reduce((a, b) => a + b, 0) / notas.length) * 100) / 100 : 0;
+        const calcularPromedio = (notas) => notas.length > 0
+            ? Math.round((notas.reduce((a, b) => a + b, 0) / notas.length) * 100) / 100
+            : 0;
         const CANT_TRIMESTRES = 3;
         const materias = Array.from(porMateria.entries()).map(([materiaId, entry]) => {
             const trimestres = [];
@@ -839,13 +994,24 @@ exports.cf_getStudentGrades = (0, https_1.onRequest)({ cors: true, invoker: 'pub
                     promediosTrimestrales.push(promedio);
             }
             const promedioAnual = promediosTrimestrales.length > 0
-                ? Math.round((promediosTrimestrales.reduce((a, b) => a + b, 0) / promediosTrimestrales.length) * 100) / 100
+                ? Math.round((promediosTrimestrales.reduce((a, b) => a + b, 0) /
+                    promediosTrimestrales.length) *
+                    100) / 100
                 : 0;
-            return { materiaId, materia: entry.materia, trimestres, promedioAnual };
+            return {
+                materiaId,
+                materia: entry.materia,
+                trimestres,
+                promedioAnual,
+            };
         });
-        const promediosGenerales = materias.filter(m => m.promedioAnual > 0).map(m => m.promedioAnual);
+        const promediosGenerales = materias
+            .filter((m) => m.promedioAnual > 0)
+            .map((m) => m.promedioAnual);
         const promedioGeneral = promediosGenerales.length > 0
-            ? Math.round((promediosGenerales.reduce((a, b) => a + b, 0) / promediosGenerales.length) * 100) / 100
+            ? Math.round((promediosGenerales.reduce((a, b) => a + b, 0) /
+                promediosGenerales.length) *
+                100) / 100
             : 0;
         res.status(200).send({
             alumno: {
@@ -853,11 +1019,11 @@ exports.cf_getStudentGrades = (0, https_1.onRequest)({ cors: true, invoker: 'pub
                 nombre: studentData.nombre || '',
                 studentID_login: studentData.studentID_login || '',
                 dni: studentData.dni || '',
-                nivel: studentData.nivel || ''
+                nivel: studentData.nivel || '',
             },
             anio,
             materias,
-            promedioGeneral
+            promedioGeneral,
         });
     }
     catch (error) {
@@ -873,21 +1039,51 @@ exports.cf_getStudentGrades = (0, https_1.onRequest)({ cors: true, invoker: 'pub
  */
 // Catálogo canónico: debe coincidir con src/pages/AdminPanel.jsx y scripts/seed-emulators.mjs.
 const MATERIAS_POR_NIVEL = {
-    inicial: ['Juegos y Expresión', 'Lengua Inicial', 'Matemática Inicial', 'Mundo Natural y Social', 'Música', 'Educación Física'],
-    primaria: ['Matemática', 'Lengua y Literatura', 'Ciencias Naturales', 'Ciencias Sociales', 'Inglés', 'Educación Física'],
-    secundaria: ['Matemática', 'Lengua y Literatura', 'Historia', 'Geografía', 'Física', 'Química', 'Biología', 'Inglés', 'Educación Física']
+    inicial: [
+        'Juegos y Expresión',
+        'Lengua Inicial',
+        'Matemática Inicial',
+        'Mundo Natural y Social',
+        'Música',
+        'Educación Física',
+    ],
+    primaria: [
+        'Matemática',
+        'Lengua y Literatura',
+        'Ciencias Naturales',
+        'Ciencias Sociales',
+        'Inglés',
+        'Educación Física',
+    ],
+    secundaria: [
+        'Matemática',
+        'Lengua y Literatura',
+        'Historia',
+        'Geografía',
+        'Física',
+        'Química',
+        'Biología',
+        'Inglés',
+        'Educación Física',
+    ],
 };
 exports.cf_seedMateriasYCalificaciones = (0, https_1.onRequest)({ cors: true, invoker: 'public' }, async (req, res) => {
     try {
         const callerClaims = await verifyAuth(req);
         if (callerClaims.role !== 'user_admin') {
-            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            res
+                .status(403)
+                .send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
             return;
         }
         const { nivel, studentId, anio } = req.body || {};
         const materiasNivel = MATERIAS_POR_NIVEL[nivel];
         if (!materiasNivel) {
-            res.status(400).send({ error: 'Nivel inválido. Debe ser inicial, primaria o secundaria.' });
+            res
+                .status(400)
+                .send({
+                error: 'Nivel inválido. Debe ser inicial, primaria o secundaria.',
+            });
             return;
         }
         const anioLectivo = Number(anio) || new Date().getFullYear();
@@ -895,7 +1091,8 @@ exports.cf_seedMateriasYCalificaciones = (0, https_1.onRequest)({ cors: true, in
         const materiasIds = [];
         const materiasPorId = {};
         for (const nombre of materiasNivel) {
-            const existing = await db.collection('materias')
+            const existing = await db
+                .collection('materias')
                 .where('nivel', '==', nivel)
                 .where('nombre', '==', nombre)
                 .limit(1)
@@ -905,7 +1102,7 @@ exports.cf_seedMateriasYCalificaciones = (0, https_1.onRequest)({ cors: true, in
                 const docRef = await db.collection('materias').add({
                     nombre,
                     nivel,
-                    createdAt: firestore_1.FieldValue.serverTimestamp()
+                    createdAt: firestore_1.FieldValue.serverTimestamp(),
                 });
                 materiaRef = docRef;
             }
@@ -926,11 +1123,20 @@ exports.cf_seedMateriasYCalificaciones = (0, https_1.onRequest)({ cors: true, in
             alumnosSnap = { docs: [doc] };
         }
         else {
-            alumnosSnap = await db.collection('students').where('nivel', '==', nivel).get();
+            alumnosSnap = await db
+                .collection('students')
+                .where('nivel', '==', nivel)
+                .get();
         }
         const alumnos = alumnosSnap.docs;
         if (alumnos.length === 0) {
-            res.status(200).send({ message: 'Materias registradas. No hay alumnos en el nivel para cargar calificaciones.', materiasRegistradas: materiasIds.length, calificacionesCargadas: 0 });
+            res
+                .status(200)
+                .send({
+                message: 'Materias registradas. No hay alumnos en el nivel para cargar calificaciones.',
+                materiasRegistradas: materiasIds.length,
+                calificacionesCargadas: 0,
+            });
             return;
         }
         // 3) Generar calificaciones de ejemplo (3 trimestres, notas 1-10)
@@ -940,13 +1146,14 @@ exports.cf_seedMateriasYCalificaciones = (0, https_1.onRequest)({ cors: true, in
         const generaNota = () => Math.floor(Math.random() * 10) + 1;
         // Limpiar calificaciones previas del año para evitar duplicados
         for (const alumnoDoc of alumnos) {
-            const prev = await db.collection('calificaciones')
+            const prev = await db
+                .collection('calificaciones')
                 .where('studentId', '==', alumnoDoc.id)
                 .where('anio', '==', anioLectivo)
                 .get();
             if (!prev.empty) {
                 const batch = db.batch();
-                prev.docs.forEach(doc => batch.delete(doc.ref));
+                prev.docs.forEach((doc) => batch.delete(doc.ref));
                 await batch.commit();
             }
         }
@@ -961,7 +1168,7 @@ exports.cf_seedMateriasYCalificaciones = (0, https_1.onRequest)({ cors: true, in
                         anio: anioLectivo,
                         trimestre,
                         notas,
-                        createdAt: firestore_1.FieldValue.serverTimestamp()
+                        createdAt: firestore_1.FieldValue.serverTimestamp(),
                     });
                     calificacionesCargadas++;
                 }
@@ -970,7 +1177,7 @@ exports.cf_seedMateriasYCalificaciones = (0, https_1.onRequest)({ cors: true, in
         res.status(201).send({
             message: 'Materias y calificaciones de ejemplo generadas con éxito.',
             materiasRegistradas: materiasIds.length,
-            calificacionesCargadas
+            calificacionesCargadas,
         });
     }
     catch (error) {
@@ -987,27 +1194,40 @@ exports.cf_createMateria = (0, https_1.onRequest)({ cors: true, invoker: 'public
     try {
         const callerClaims = await verifyAuth(req);
         if (callerClaims.role !== 'user_admin') {
-            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            res
+                .status(403)
+                .send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
             return;
         }
         const { nombre, nivel, profesorUid } = req.body;
         if (!nombre || !String(nombre).trim()) {
-            res.status(400).send({ error: 'El nombre de la materia es obligatorio.' });
+            res
+                .status(400)
+                .send({ error: 'El nombre de la materia es obligatorio.' });
             return;
         }
         if (!['inicial', 'primaria', 'secundaria'].includes(nivel)) {
-            res.status(400).send({ error: 'Nivel inválido. Debe ser inicial, primaria o secundaria.' });
+            res
+                .status(400)
+                .send({
+                error: 'Nivel inválido. Debe ser inicial, primaria o secundaria.',
+            });
             return;
         }
         const nombreLimpio = String(nombre).trim();
         // Unicidad por nivel: "Matemática" puede existir en primaria y secundaria.
-        const duplicado = await db.collection('materias')
+        const duplicado = await db
+            .collection('materias')
             .where('nivel', '==', nivel)
             .where('nombre', '==', nombreLimpio)
             .limit(1)
             .get();
         if (!duplicado.empty) {
-            res.status(409).send({ error: `Ya existe una materia llamada "${nombreLimpio}" en el nivel ${nivel}.` });
+            res
+                .status(409)
+                .send({
+                error: `Ya existe una materia llamada "${nombreLimpio}" en el nivel ${nivel}.`,
+            });
             return;
         }
         // Resolver datos del profesor a cargo (si se asigna uno)
@@ -1027,7 +1247,7 @@ exports.cf_createMateria = (0, https_1.onRequest)({ cors: true, invoker: 'public
             profesorUid: profesorUid || null,
             profesorNombre,
             profesorDni,
-            createdAt: firestore_1.FieldValue.serverTimestamp()
+            createdAt: firestore_1.FieldValue.serverTimestamp(),
         });
         res.status(201).send({ id: docRef.id, nombre: nombreLimpio });
     }
@@ -1045,7 +1265,9 @@ exports.cf_updateMateria = (0, https_1.onRequest)({ cors: true, invoker: 'public
     try {
         const callerClaims = await verifyAuth(req);
         if (callerClaims.role !== 'user_admin') {
-            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            res
+                .status(403)
+                .send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
             return;
         }
         const { materiaId, nombre, nivel, profesorUid } = req.body;
@@ -1054,11 +1276,17 @@ exports.cf_updateMateria = (0, https_1.onRequest)({ cors: true, invoker: 'public
             return;
         }
         if (!nombre || !String(nombre).trim()) {
-            res.status(400).send({ error: 'El nombre de la materia es obligatorio.' });
+            res
+                .status(400)
+                .send({ error: 'El nombre de la materia es obligatorio.' });
             return;
         }
         if (!['inicial', 'primaria', 'secundaria'].includes(nivel)) {
-            res.status(400).send({ error: 'Nivel inválido. Debe ser inicial, primaria o secundaria.' });
+            res
+                .status(400)
+                .send({
+                error: 'Nivel inválido. Debe ser inicial, primaria o secundaria.',
+            });
             return;
         }
         const materiaRef = db.collection('materias').doc(materiaId);
@@ -1069,13 +1297,18 @@ exports.cf_updateMateria = (0, https_1.onRequest)({ cors: true, invoker: 'public
         }
         const nombreLimpio = String(nombre).trim();
         // Verificar unicidad dentro del nivel, excluyendo la propia materia.
-        const duplicados = await db.collection('materias')
+        const duplicados = await db
+            .collection('materias')
             .where('nivel', '==', nivel)
             .where('nombre', '==', nombreLimpio)
             .get();
         const conflicto = duplicados.docs.find((doc) => doc.id !== materiaId);
         if (conflicto) {
-            res.status(409).send({ error: `Ya existe otra materia llamada "${nombreLimpio}" en el nivel ${nivel}.` });
+            res
+                .status(409)
+                .send({
+                error: `Ya existe otra materia llamada "${nombreLimpio}" en el nivel ${nivel}.`,
+            });
             return;
         }
         // Resolver datos del profesor a cargo (si se asigna uno)
@@ -1095,7 +1328,7 @@ exports.cf_updateMateria = (0, https_1.onRequest)({ cors: true, invoker: 'public
             profesorUid: profesorUid || null,
             profesorNombre,
             profesorDni,
-            updatedAt: firestore_1.FieldValue.serverTimestamp()
+            updatedAt: firestore_1.FieldValue.serverTimestamp(),
         });
         res.status(200).send({ id: materiaId, nombre: nombreLimpio });
     }
@@ -1113,7 +1346,9 @@ exports.cf_setMateriaStudents = (0, https_1.onRequest)({ cors: true, invoker: 'p
     try {
         const callerClaims = await verifyAuth(req);
         if (callerClaims.role !== 'user_admin') {
-            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            res
+                .status(403)
+                .send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
             return;
         }
         const { materiaId, studentIds } = req.body;
@@ -1121,8 +1356,11 @@ exports.cf_setMateriaStudents = (0, https_1.onRequest)({ cors: true, invoker: 'p
             res.status(400).send({ error: 'El ID de la materia es obligatorio.' });
             return;
         }
-        if (!Array.isArray(studentIds) || studentIds.some((id) => typeof id !== 'string')) {
-            res.status(400).send({ error: 'studentIds debe ser un arreglo de IDs de alumnos.' });
+        if (!Array.isArray(studentIds) ||
+            studentIds.some((id) => typeof id !== 'string')) {
+            res
+                .status(400)
+                .send({ error: 'studentIds debe ser un arreglo de IDs de alumnos.' });
             return;
         }
         const materiaRef = db.collection('materias').doc(materiaId);
@@ -1142,7 +1380,11 @@ exports.cf_setMateriaStudents = (0, https_1.onRequest)({ cors: true, invoker: 'p
             }
             const studentData = studentDoc.data();
             if (studentData?.nivel !== materiaNivel) {
-                res.status(400).send({ error: `El alumno ${studentData?.nombre || studentId} no pertenece al nivel ${materiaNivel}.` });
+                res
+                    .status(400)
+                    .send({
+                    error: `El alumno ${studentData?.nombre || studentId} no pertenece al nivel ${materiaNivel}.`,
+                });
                 return;
             }
         }
@@ -1164,14 +1406,19 @@ exports.cf_getDocentePanel = (0, https_1.onRequest)({ cors: true, invoker: 'publ
     try {
         const callerClaims = await verifyAuth(req);
         if (callerClaims.role !== 'Staff') {
-            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol Staff.' });
+            res
+                .status(403)
+                .send({ error: 'Permisos insuficientes: Requiere rol Staff.' });
             return;
         }
         const anio = Number(req.query.anio) || new Date().getFullYear();
         // Perfil del docente y materias a su cargo.
         const [docenteDoc, materiasSnap] = await Promise.all([
             db.collection('users').doc(callerClaims.uid).get(),
-            db.collection('materias').where('profesorUid', '==', callerClaims.uid).get()
+            db
+                .collection('materias')
+                .where('profesorUid', '==', callerClaims.uid)
+                .get(),
         ]);
         const materias = materiasSnap.docs
             .map((doc) => ({ id: doc.id, ...doc.data() }))
@@ -1184,7 +1431,7 @@ exports.cf_getDocentePanel = (0, https_1.onRequest)({ cors: true, invoker: 'publ
         });
         // Cargar una sola vez todos los alumnos del docente.
         const studentIds = [
-            ...new Set(materias.flatMap((materia) => Array.isArray(materia.studentIds) ? materia.studentIds : []))
+            ...new Set(materias.flatMap((materia) => Array.isArray(materia.studentIds) ? materia.studentIds : [])),
         ];
         const studentDocs = await Promise.all(studentIds.map((studentId) => db.collection('students').doc(studentId).get()));
         const studentsById = new Map();
@@ -1195,16 +1442,19 @@ exports.cf_getDocentePanel = (0, https_1.onRequest)({ cors: true, invoker: 'publ
             studentsById.set(doc.id, {
                 id: doc.id,
                 nombre: data.nombre || '',
-                studentID_login: data.studentID_login || ''
+                studentID_login: data.studentID_login || '',
             });
         });
         // Calificaciones del año, consultadas por materia.
-        const calificacionesSnaps = await Promise.all(materias.map((materia) => db.collection('calificaciones')
+        const calificacionesSnaps = await Promise.all(materias.map((materia) => db
+            .collection('calificaciones')
             .where('materiaId', '==', materia.id)
             .where('anio', '==', anio)
             .get()));
         const materiasConDatos = materias.map((materia, index) => {
-            const inscritos = Array.isArray(materia.studentIds) ? materia.studentIds : [];
+            const inscritos = Array.isArray(materia.studentIds)
+                ? materia.studentIds
+                : [];
             const alumnos = inscritos
                 .map((studentId) => studentsById.get(studentId))
                 .filter(Boolean)
@@ -1216,7 +1466,7 @@ exports.cf_getDocentePanel = (0, https_1.onRequest)({ cors: true, invoker: 'publ
                     trimestre: Number(data.trimestre),
                     notas: Array.isArray(data.notas)
                         ? data.notas.map((nota) => Number(nota))
-                        : []
+                        : [],
                 };
             });
             return {
@@ -1224,17 +1474,17 @@ exports.cf_getDocentePanel = (0, https_1.onRequest)({ cors: true, invoker: 'publ
                 nombre: materia.nombre || '',
                 nivel: materia.nivel || '',
                 alumnos,
-                calificaciones
+                calificaciones,
             };
         });
         res.status(200).send({
             docente: {
                 uid: callerClaims.uid,
                 nombre: docenteDoc.data()?.nombre || '',
-                email: docenteDoc.data()?.email || callerClaims.email || ''
+                email: docenteDoc.data()?.email || callerClaims.email || '',
             },
             anio,
-            materias: materiasConDatos
+            materias: materiasConDatos,
         });
     }
     catch (error) {
@@ -1252,12 +1502,20 @@ exports.cf_saveGrades = (0, https_1.onRequest)({ cors: true, invoker: 'public' }
     try {
         const callerClaims = await verifyAuth(req);
         if (callerClaims.role !== 'Staff') {
-            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol Staff.' });
+            res
+                .status(403)
+                .send({ error: 'Permisos insuficientes: Requiere rol Staff.' });
             return;
         }
         const { materiaId, trimestre, anio, grades } = req.body || {};
-        if (!materiaId || typeof materiaId !== 'string' || !Array.isArray(grades)) {
-            res.status(400).send({ error: 'Faltan parámetros requeridos (materiaId, trimestre, grades).' });
+        if (!materiaId ||
+            typeof materiaId !== 'string' ||
+            !Array.isArray(grades)) {
+            res
+                .status(400)
+                .send({
+                error: 'Faltan parámetros requeridos (materiaId, trimestre, grades).',
+            });
             return;
         }
         const trimestreNum = Number(trimestre);
@@ -1266,7 +1524,9 @@ exports.cf_saveGrades = (0, https_1.onRequest)({ cors: true, invoker: 'public' }
             return;
         }
         const anioLectivo = Number(anio) || new Date().getFullYear();
-        if (!Number.isInteger(anioLectivo) || anioLectivo < 2000 || anioLectivo > 2100) {
+        if (!Number.isInteger(anioLectivo) ||
+            anioLectivo < 2000 ||
+            anioLectivo > 2100) {
             res.status(400).send({ error: 'El año lectivo es inválido.' });
             return;
         }
@@ -1277,12 +1537,18 @@ exports.cf_saveGrades = (0, https_1.onRequest)({ cors: true, invoker: 'public' }
         }
         const materiaData = materiaDoc.data() || {};
         if (materiaData.profesorUid !== callerClaims.uid) {
-            res.status(403).send({ error: 'No tenés permiso para cargar notas en esta materia.' });
+            res
+                .status(403)
+                .send({
+                error: 'No tenés permiso para cargar notas en esta materia.',
+            });
             return;
         }
         const inscriptos = new Set(Array.isArray(materiaData.studentIds) ? materiaData.studentIds : []);
         if (inscriptos.size === 0) {
-            res.status(400).send({ error: 'La materia no tiene alumnos inscriptos.' });
+            res
+                .status(400)
+                .send({ error: 'La materia no tiene alumnos inscriptos.' });
             return;
         }
         // Validar y normalizar cada fila enviada por el docente.
@@ -1291,28 +1557,43 @@ exports.cf_saveGrades = (0, https_1.onRequest)({ cors: true, invoker: 'public' }
         for (const fila of grades) {
             const studentId = fila?.studentId;
             if (!studentId || !inscriptos.has(studentId)) {
-                res.status(400).send({ error: `El alumno ${studentId || 'desconocido'} no está inscripto en esta materia.` });
+                res
+                    .status(400)
+                    .send({
+                    error: `El alumno ${studentId || 'desconocido'} no está inscripto en esta materia.`,
+                });
                 return;
             }
             if (alumnosProcesados.has(studentId)) {
-                res.status(400).send({ error: `El alumno ${studentId} está repetido en la carga.` });
+                res
+                    .status(400)
+                    .send({
+                    error: `El alumno ${studentId} está repetido en la carga.`,
+                });
                 return;
             }
             const notasRaw = Array.isArray(fila?.notas) ? fila.notas : [];
             if (notasRaw.length > 10) {
-                res.status(400).send({ error: 'Se permiten hasta 10 notas por alumno y trimestre.' });
+                res
+                    .status(400)
+                    .send({
+                    error: 'Se permiten hasta 10 notas por alumno y trimestre.',
+                });
                 return;
             }
             const notas = notasRaw.map((nota) => Number(nota));
             if (notas.some((nota) => !Number.isFinite(nota) || nota < 1 || nota > 10)) {
-                res.status(400).send({ error: 'Todas las notas deben ser números entre 1 y 10.' });
+                res
+                    .status(400)
+                    .send({ error: 'Todas las notas deben ser números entre 1 y 10.' });
                 return;
             }
             alumnosProcesados.add(studentId);
             normalizadas.push({ studentId, notas });
         }
         // Reutilizar los documentos existentes para no duplicar calificaciones.
-        const existentesSnap = await db.collection('calificaciones')
+        const existentesSnap = await db
+            .collection('calificaciones')
             .where('materiaId', '==', materiaId)
             .where('anio', '==', anioLectivo)
             .where('trimestre', '==', trimestreNum)
@@ -1337,7 +1618,7 @@ exports.cf_saveGrades = (0, https_1.onRequest)({ cors: true, invoker: 'public' }
                 notas,
                 updatedAt: firestore_1.FieldValue.serverTimestamp(),
                 updatedBy: callerClaims.uid,
-                ...(existente ? {} : { createdAt: firestore_1.FieldValue.serverTimestamp() })
+                ...(existente ? {} : { createdAt: firestore_1.FieldValue.serverTimestamp() }),
             }, { merge: true });
         }
         await batch.commit();
@@ -1346,7 +1627,7 @@ exports.cf_saveGrades = (0, https_1.onRequest)({ cors: true, invoker: 'public' }
             saved: normalizadas.length,
             materiaId,
             trimestre: trimestreNum,
-            anio: anioLectivo
+            anio: anioLectivo,
         });
     }
     catch (error) {
@@ -1364,20 +1645,26 @@ exports.cf_requestStudentPasswordReset = (0, https_1.onRequest)({ cors: true, in
     try {
         const { identifier, emailPadre } = req.body || {};
         if (!identifier || !emailPadre) {
-            res.status(400).send({ error: 'Ingresá tu ID institucional o DNI y el correo del tutor.' });
+            res
+                .status(400)
+                .send({
+                error: 'Ingresá tu ID institucional o DNI y el correo del tutor.',
+            });
             return;
         }
         const identifierLimpio = String(identifier).trim();
         const emailLimpio = String(emailPadre).trim().toLowerCase();
         const respuestaGenerica = {
-            message: 'Si los datos coinciden con un alumno registrado, enviaremos un enlace de recuperación al correo del tutor.'
+            message: 'Si los datos coinciden con un alumno registrado, enviaremos un enlace de recuperación al correo del tutor.',
         };
-        let snapshot = await db.collection('students')
+        let snapshot = await db
+            .collection('students')
             .where('studentID_login', '==', identifierLimpio)
             .limit(1)
             .get();
         if (snapshot.empty) {
-            snapshot = await db.collection('students')
+            snapshot = await db
+                .collection('students')
                 .where('dni', '==', identifierLimpio)
                 .limit(1)
                 .get();
@@ -1393,18 +1680,27 @@ exports.cf_requestStudentPasswordReset = (0, https_1.onRequest)({ cors: true, in
             return;
         }
         const ultimaSolicitud = studentData.passwordResetRequestedAt;
-        if (ultimaSolicitud && Date.now() - ultimaSolicitud.toMillis() < 60 * 1000) {
-            res.status(429).send({ error: 'Esperá un minuto antes de solicitar otro enlace de recuperación.' });
+        if (ultimaSolicitud &&
+            Date.now() - ultimaSolicitud.toMillis() < 60 * 1000) {
+            res
+                .status(429)
+                .send({
+                error: 'Esperá un minuto antes de solicitar otro enlace de recuperación.',
+            });
             return;
         }
         // Invalidar tokens anteriores aún vigentes.
-        const anteriores = await db.collection('passwordResets')
+        const anteriores = await db
+            .collection('passwordResets')
             .where('studentId', '==', studentDoc.id)
             .get();
         const batch = db.batch();
         anteriores.docs.forEach((doc) => {
             if (!doc.data().used) {
-                batch.update(doc.ref, { used: true, usedAt: firestore_1.FieldValue.serverTimestamp() });
+                batch.update(doc.ref, {
+                    used: true,
+                    usedAt: firestore_1.FieldValue.serverTimestamp(),
+                });
             }
         });
         const resetToken = crypto.randomBytes(32).toString('hex');
@@ -1416,7 +1712,9 @@ exports.cf_requestStudentPasswordReset = (0, https_1.onRequest)({ cors: true, in
             expiresAt: firestore_1.Timestamp.fromMillis(Date.now() + PASSWORD_RESET_TTL_MS),
             requestedIp: req.ip || null,
         });
-        batch.update(studentDoc.ref, { passwordResetRequestedAt: firestore_1.FieldValue.serverTimestamp() });
+        batch.update(studentDoc.ref, {
+            passwordResetRequestedAt: firestore_1.FieldValue.serverTimestamp(),
+        });
         await batch.commit();
         const resetLink = `${APP_BASE_URL}/reset-password?token=${resetToken}&studentId=${studentDoc.id}`;
         const htmlContent = `
@@ -1448,11 +1746,19 @@ exports.cf_confirmStudentPasswordReset = (0, https_1.onRequest)({ cors: true, in
     try {
         const { studentId, token, newPassword } = req.body || {};
         if (!studentId || !token || !newPassword) {
-            res.status(400).send({ error: 'Faltan parámetros requeridos (studentId, token, newPassword).' });
+            res
+                .status(400)
+                .send({
+                error: 'Faltan parámetros requeridos (studentId, token, newPassword).',
+            });
             return;
         }
         if (typeof newPassword !== 'string' || newPassword.length < 6) {
-            res.status(400).send({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
+            res
+                .status(400)
+                .send({
+                error: 'La nueva contraseña debe tener al menos 6 caracteres.',
+            });
             return;
         }
         const studentIdStr = String(studentId);
@@ -1460,17 +1766,29 @@ exports.cf_confirmStudentPasswordReset = (0, https_1.onRequest)({ cors: true, in
         const resetRef = db.collection('passwordResets').doc(tokenHash);
         const resetDoc = await resetRef.get();
         if (!resetDoc.exists) {
-            res.status(400).send({ error: 'El enlace de recuperación es inválido o ya fue utilizado.' });
+            res
+                .status(400)
+                .send({
+                error: 'El enlace de recuperación es inválido o ya fue utilizado.',
+            });
             return;
         }
         const resetData = resetDoc.data() || {};
         if (resetData.studentId !== studentIdStr || resetData.used) {
-            res.status(400).send({ error: 'El enlace de recuperación es inválido o ya fue utilizado.' });
+            res
+                .status(400)
+                .send({
+                error: 'El enlace de recuperación es inválido o ya fue utilizado.',
+            });
             return;
         }
         const expiresAt = resetData.expiresAt;
         if (!expiresAt || expiresAt.toMillis() < Date.now()) {
-            res.status(400).send({ error: 'El enlace de recuperación expiró. Solicitá uno nuevo.' });
+            res
+                .status(400)
+                .send({
+                error: 'El enlace de recuperación expiró. Solicitá uno nuevo.',
+            });
             return;
         }
         const studentRef = db.collection('students').doc(studentIdStr);
@@ -1481,13 +1799,17 @@ exports.cf_confirmStudentPasswordReset = (0, https_1.onRequest)({ cors: true, in
         }
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(newPassword, salt);
-        const tokensSnap = await db.collection('passwordResets')
+        const tokensSnap = await db
+            .collection('passwordResets')
             .where('studentId', '==', studentIdStr)
             .get();
         const batch = db.batch();
         tokensSnap.docs.forEach((doc) => {
             if (!doc.data().used) {
-                batch.update(doc.ref, { used: true, usedAt: firestore_1.FieldValue.serverTimestamp() });
+                batch.update(doc.ref, {
+                    used: true,
+                    usedAt: firestore_1.FieldValue.serverTimestamp(),
+                });
             }
         });
         batch.update(studentRef, {
@@ -1496,7 +1818,11 @@ exports.cf_confirmStudentPasswordReset = (0, https_1.onRequest)({ cors: true, in
             passwordResetRequestedAt: null,
         });
         await batch.commit();
-        res.status(200).send({ message: 'Contraseña restablecida con éxito. Ya podés iniciar sesión.' });
+        res
+            .status(200)
+            .send({
+            message: 'Contraseña restablecida con éxito. Ya podés iniciar sesión.',
+        });
     }
     catch (error) {
         console.error('Error en cf_confirmStudentPasswordReset:', error);
@@ -1523,11 +1849,15 @@ exports.cf_getStudentAttendance = (0, https_1.onRequest)({ cors: true, invoker: 
         }
         const studentData = studentDoc.data() || {};
         const anioFiltro = req.query.anio ? Number(req.query.anio) : null;
-        if (anioFiltro != null && (!Number.isInteger(anioFiltro) || anioFiltro < 2000 || anioFiltro > 2100)) {
+        if (anioFiltro != null &&
+            (!Number.isInteger(anioFiltro) ||
+                anioFiltro < 2000 ||
+                anioFiltro > 2100)) {
             res.status(400).send({ error: 'El año lectivo es inválido.' });
             return;
         }
-        const snapshot = await db.collection('asistencias')
+        const snapshot = await db
+            .collection('asistencias')
             .where('studentId', '==', studentUid)
             .get();
         const resumen = {
@@ -1542,7 +1872,8 @@ exports.cf_getStudentAttendance = (0, https_1.onRequest)({ cors: true, invoker: 
             .map((doc) => {
             const data = doc.data() || {};
             const fecha = data.fecha;
-            const fechaISO = data.fechaISO || (fecha ? fecha.toDate().toISOString().slice(0, 10) : null);
+            const fechaISO = data.fechaISO ||
+                (fecha ? fecha.toDate().toISOString().slice(0, 10) : null);
             return {
                 id: doc.id,
                 materiaId: data.materiaId || '',
@@ -1553,7 +1884,11 @@ exports.cf_getStudentAttendance = (0, https_1.onRequest)({ cors: true, invoker: 
                 estado: String(data.estado || '').toLowerCase(),
                 observacion: data.observacion || '',
                 registradoPor: data.registradoPor || null,
-                _orden: fecha ? fecha.toMillis() : (fechaISO ? Date.parse(fechaISO) : 0),
+                _orden: fecha
+                    ? fecha.toMillis()
+                    : fechaISO
+                        ? Date.parse(fechaISO)
+                        : 0,
             };
         })
             .filter((item) => !anioFiltro || item.anio === anioFiltro)
@@ -1565,9 +1900,10 @@ exports.cf_getStudentAttendance = (0, https_1.onRequest)({ cors: true, invoker: 
             resumen[item.estado] += 1;
         });
         const computables = resumen.presente + resumen.tarde + resumen.justificada;
-        resumen.porcentajeAsistencia = resumen.total > 0
-            ? Math.round((computables / resumen.total) * 10000) / 100
-            : 0;
+        resumen.porcentajeAsistencia =
+            resumen.total > 0
+                ? Math.round((computables / resumen.total) * 10000) / 100
+                : 0;
         res.status(200).send({
             alumno: {
                 uid: studentUid,
@@ -1605,11 +1941,14 @@ exports.cf_getStudentSchedule = (0, https_1.onRequest)({ cors: true, invoker: 'p
         }
         const studentData = studentDoc.data() || {};
         if (!studentData.nivel) {
-            res.status(400).send({ error: 'El alumno no tiene un nivel educativo asignado.' });
+            res
+                .status(400)
+                .send({ error: 'El alumno no tiene un nivel educativo asignado.' });
             return;
         }
         const anio = Number(req.query.anio) || new Date().getFullYear();
-        const snapshot = await db.collection('horarios')
+        const snapshot = await db
+            .collection('horarios')
             .where('nivel', '==', studentData.nivel)
             .get();
         const horarios = snapshot.docs
@@ -1617,9 +1956,13 @@ exports.cf_getStudentSchedule = (0, https_1.onRequest)({ cors: true, invoker: 'p
             .filter((item) => {
             if (item.anio && Number(item.anio) !== anio)
                 return false;
-            if (studentData.curso && item.curso && item.curso !== studentData.curso)
+            if (studentData.curso &&
+                item.curso &&
+                item.curso !== studentData.curso)
                 return false;
-            if (studentData.division && item.division && item.division !== studentData.division)
+            if (studentData.division &&
+                item.division &&
+                item.division !== studentData.division)
                 return false;
             return true;
         })
@@ -1678,7 +2021,8 @@ exports.cf_getStudentMaterials = (0, https_1.onRequest)({ cors: true, invoker: '
             return;
         }
         const studentData = studentDoc.data() || {};
-        const materiasSnap = await db.collection('materias')
+        const materiasSnap = await db
+            .collection('materias')
             .where('studentIds', 'array-contains', studentUid)
             .get();
         const materias = materiasSnap.docs.map((doc) => ({
@@ -1690,14 +2034,16 @@ exports.cf_getStudentMaterials = (0, https_1.onRequest)({ cors: true, invoker: '
         if (materiaIds.length > 0) {
             for (let i = 0; i < materiaIds.length; i += 10) {
                 const chunk = materiaIds.slice(i, i + 10);
-                const snap = await db.collection('materiales')
+                const snap = await db
+                    .collection('materiales')
                     .where('materiaId', 'in', chunk)
                     .get();
                 docs.push(...snap.docs);
             }
         }
         else if (studentData.nivel) {
-            const snap = await db.collection('materiales')
+            const snap = await db
+                .collection('materiales')
                 .where('nivel', '==', studentData.nivel)
                 .get();
             docs.push(...snap.docs);
@@ -1763,36 +2109,60 @@ exports.cf_saveAttendance = (0, https_1.onRequest)({ cors: true, invoker: 'publi
     try {
         const callerClaims = await verifyAuth(req);
         if (callerClaims.role !== 'Staff' && callerClaims.role !== 'user_admin') {
-            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol Staff o user_admin.' });
+            res
+                .status(403)
+                .send({
+                error: 'Permisos insuficientes: Requiere rol Staff o user_admin.',
+            });
             return;
         }
         const { materiaId, fecha, records } = req.body || {};
-        if (!materiaId || !fecha || !Array.isArray(records) || records.length === 0) {
-            res.status(400).send({ error: 'Faltan parámetros requeridos (materiaId, fecha, records).' });
+        if (!materiaId ||
+            !fecha ||
+            !Array.isArray(records) ||
+            records.length === 0) {
+            res
+                .status(400)
+                .send({
+                error: 'Faltan parámetros requeridos (materiaId, fecha, records).',
+            });
             return;
         }
         if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha))) {
-            res.status(400).send({ error: 'La fecha debe tener el formato YYYY-MM-DD.' });
+            res
+                .status(400)
+                .send({ error: 'La fecha debe tener el formato YYYY-MM-DD.' });
             return;
         }
         const fechaDate = new Date(`${fecha}T12:00:00.000Z`);
-        if (Number.isNaN(fechaDate.getTime()) || fechaDate.toISOString().slice(0, 10) !== fecha) {
+        if (Number.isNaN(fechaDate.getTime()) ||
+            fechaDate.toISOString().slice(0, 10) !== fecha) {
             res.status(400).send({ error: 'La fecha indicada no es válida.' });
             return;
         }
-        const materiaDoc = await db.collection('materias').doc(String(materiaId)).get();
+        const materiaDoc = await db
+            .collection('materias')
+            .doc(String(materiaId))
+            .get();
         if (!materiaDoc.exists) {
             res.status(404).send({ error: 'La materia no existe.' });
             return;
         }
         const materiaData = materiaDoc.data() || {};
-        if (callerClaims.role === 'Staff' && materiaData.profesorUid !== callerClaims.uid) {
-            res.status(403).send({ error: 'No tenés permiso para cargar asistencias en esta materia.' });
+        if (callerClaims.role === 'Staff' &&
+            materiaData.profesorUid !== callerClaims.uid) {
+            res
+                .status(403)
+                .send({
+                error: 'No tenés permiso para cargar asistencias en esta materia.',
+            });
             return;
         }
         const inscriptos = new Set(Array.isArray(materiaData.studentIds) ? materiaData.studentIds : []);
         if (inscriptos.size === 0) {
-            res.status(400).send({ error: 'La materia no tiene alumnos inscriptos.' });
+            res
+                .status(400)
+                .send({ error: 'La materia no tiene alumnos inscriptos.' });
             return;
         }
         const normalizados = [];
@@ -1800,19 +2170,31 @@ exports.cf_saveAttendance = (0, https_1.onRequest)({ cors: true, invoker: 'publi
             const studentId = String(record?.studentId || '');
             const estado = String(record?.estado || '').toLowerCase();
             if (!studentId || !inscriptos.has(studentId)) {
-                res.status(400).send({ error: `El alumno ${studentId || 'desconocido'} no está inscripto en esta materia.` });
+                res
+                    .status(400)
+                    .send({
+                    error: `El alumno ${studentId || 'desconocido'} no está inscripto en esta materia.`,
+                });
                 return;
             }
             if (!ATTENDANCE_STATES.includes(estado)) {
-                res.status(400).send({ error: `Estado inválido para ${studentId}. Debe ser presente, ausente, tarde o justificada.` });
+                res
+                    .status(400)
+                    .send({
+                    error: `Estado inválido para ${studentId}. Debe ser presente, ausente, tarde o justificada.`,
+                });
                 return;
             }
-            const observacion = String(record?.observacion || '').trim().slice(0, 200);
+            const observacion = String(record?.observacion || '')
+                .trim()
+                .slice(0, 200);
             normalizados.push({ studentId, estado, observacion });
         }
         const batch = db.batch();
         normalizados.forEach(({ studentId, estado, observacion }) => {
-            const ref = db.collection('asistencias').doc(`${materiaId}_${fecha}_${studentId}`);
+            const ref = db
+                .collection('asistencias')
+                .doc(`${materiaId}_${fecha}_${studentId}`);
             batch.set(ref, {
                 studentId,
                 materiaId,
@@ -1847,35 +2229,59 @@ exports.cf_upsertMaterial = (0, https_1.onRequest)({ cors: true, invoker: 'publi
     try {
         const callerClaims = await verifyAuth(req);
         if (callerClaims.role !== 'Staff' && callerClaims.role !== 'user_admin') {
-            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol Staff o user_admin.' });
+            res
+                .status(403)
+                .send({
+                error: 'Permisos insuficientes: Requiere rol Staff o user_admin.',
+            });
             return;
         }
         const { id, materiaId, titulo, descripcion, tipo, url, anio } = req.body || {};
         if (!materiaId || !titulo || !url) {
-            res.status(400).send({ error: 'Faltan parámetros requeridos (materiaId, titulo, url).' });
+            res
+                .status(400)
+                .send({
+                error: 'Faltan parámetros requeridos (materiaId, titulo, url).',
+            });
             return;
         }
         const tipoFinal = String(tipo || 'link').toLowerCase();
         if (!MATERIAL_TYPES.includes(tipoFinal)) {
-            res.status(400).send({ error: `Tipo inválido. Debe ser uno de: ${MATERIAL_TYPES.join(', ')}.` });
+            res
+                .status(400)
+                .send({
+                error: `Tipo inválido. Debe ser uno de: ${MATERIAL_TYPES.join(', ')}.`,
+            });
             return;
         }
-        const materiaDoc = await db.collection('materias').doc(String(materiaId)).get();
+        const materiaDoc = await db
+            .collection('materias')
+            .doc(String(materiaId))
+            .get();
         if (!materiaDoc.exists) {
             res.status(404).send({ error: 'La materia no existe.' });
             return;
         }
         const materiaData = materiaDoc.data() || {};
-        if (callerClaims.role === 'Staff' && materiaData.profesorUid !== callerClaims.uid) {
-            res.status(403).send({ error: 'No tenés permiso para publicar materiales en esta materia.' });
+        if (callerClaims.role === 'Staff' &&
+            materiaData.profesorUid !== callerClaims.uid) {
+            res
+                .status(403)
+                .send({
+                error: 'No tenés permiso para publicar materiales en esta materia.',
+            });
             return;
         }
         const anioLectivo = Number(anio) || new Date().getFullYear();
-        if (!Number.isInteger(anioLectivo) || anioLectivo < 2000 || anioLectivo > 2100) {
+        if (!Number.isInteger(anioLectivo) ||
+            anioLectivo < 2000 ||
+            anioLectivo > 2100) {
             res.status(400).send({ error: 'El año lectivo es inválido.' });
             return;
         }
-        const ref = id ? db.collection('materiales').doc(String(id)) : db.collection('materiales').doc();
+        const ref = id
+            ? db.collection('materiales').doc(String(id))
+            : db.collection('materiales').doc();
         const existente = id ? await ref.get() : null;
         const esNuevo = !existente?.exists;
         // Un docente no puede sobrescribir un material de otra materia.
@@ -1884,8 +2290,11 @@ exports.cf_upsertMaterial = (0, https_1.onRequest)({ cors: true, invoker: 'publi
             const materiaOriginalDoc = materiaOriginalId
                 ? await db.collection('materias').doc(materiaOriginalId).get()
                 : null;
-            if (!materiaOriginalDoc?.exists || materiaOriginalDoc.data()?.profesorUid !== callerClaims.uid) {
-                res.status(403).send({ error: 'No tenés permiso para modificar este material.' });
+            if (!materiaOriginalDoc?.exists ||
+                materiaOriginalDoc.data()?.profesorUid !== callerClaims.uid) {
+                res
+                    .status(403)
+                    .send({ error: 'No tenés permiso para modificar este material.' });
                 return;
             }
         }
@@ -1903,7 +2312,9 @@ exports.cf_upsertMaterial = (0, https_1.onRequest)({ cors: true, invoker: 'publi
             updatedAt: firestore_1.FieldValue.serverTimestamp(),
             ...(esNuevo ? { createdAt: firestore_1.FieldValue.serverTimestamp() } : {}),
         }, { merge: true });
-        res.status(esNuevo ? 201 : 200).send({ id: ref.id, message: 'Material guardado correctamente.' });
+        res
+            .status(esNuevo ? 201 : 200)
+            .send({ id: ref.id, message: 'Material guardado correctamente.' });
     }
     catch (error) {
         console.error('Error en cf_upsertMaterial:', error);
@@ -1934,9 +2345,14 @@ exports.cf_deleteMaterial = (0, https_1.onRequest)({ cors: true, invoker: 'publi
         }
         if (callerClaims.role === 'Staff') {
             const materiaId = materialDoc.data()?.materiaId;
-            const materiaDoc = materiaId ? await db.collection('materias').doc(materiaId).get() : null;
-            if (!materiaDoc?.exists || materiaDoc.data()?.profesorUid !== callerClaims.uid) {
-                res.status(403).send({ error: 'No tenés permiso para eliminar este material.' });
+            const materiaDoc = materiaId
+                ? await db.collection('materias').doc(materiaId).get()
+                : null;
+            if (!materiaDoc?.exists ||
+                materiaDoc.data()?.profesorUid !== callerClaims.uid) {
+                res
+                    .status(403)
+                    .send({ error: 'No tenés permiso para eliminar este material.' });
                 return;
             }
         }
@@ -1956,31 +2372,51 @@ exports.cf_upsertSchedule = (0, https_1.onRequest)({ cors: true, invoker: 'publi
     try {
         const callerClaims = await verifyAuth(req);
         if (callerClaims.role !== 'user_admin') {
-            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            res
+                .status(403)
+                .send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
             return;
         }
         const { id, nivel, curso, division, dia, horaInicio, horaFin, materiaId, materiaNombre, docente, aula, anio, } = req.body || {};
         if (!['inicial', 'primaria', 'secundaria'].includes(nivel)) {
-            res.status(400).send({ error: 'Nivel inválido. Debe ser inicial, primaria o secundaria.' });
+            res
+                .status(400)
+                .send({
+                error: 'Nivel inválido. Debe ser inicial, primaria o secundaria.',
+            });
             return;
         }
         const diaNum = Number(dia);
         if (!Number.isInteger(diaNum) || diaNum < 1 || diaNum > 6) {
-            res.status(400).send({ error: 'El día debe ser un número entre 1 (lunes) y 6 (sábado).' });
+            res
+                .status(400)
+                .send({
+                error: 'El día debe ser un número entre 1 (lunes) y 6 (sábado).',
+            });
             return;
         }
-        if (!/^\d{2}:\d{2}$/.test(String(horaInicio)) || !/^\d{2}:\d{2}$/.test(String(horaFin))) {
-            res.status(400).send({ error: 'Las horas deben tener el formato HH:MM.' });
+        if (!/^\d{2}:\d{2}$/.test(String(horaInicio)) ||
+            !/^\d{2}:\d{2}$/.test(String(horaFin))) {
+            res
+                .status(400)
+                .send({ error: 'Las horas deben tener el formato HH:MM.' });
             return;
         }
         if (String(horaInicio) >= String(horaFin)) {
-            res.status(400).send({ error: 'La hora de inicio debe ser anterior a la hora de fin.' });
+            res
+                .status(400)
+                .send({
+                error: 'La hora de inicio debe ser anterior a la hora de fin.',
+            });
             return;
         }
         let nombreMateria = String(materiaNombre || '').trim();
         let docenteFinal = String(docente || '').trim();
         if (materiaId) {
-            const materiaDoc = await db.collection('materias').doc(String(materiaId)).get();
+            const materiaDoc = await db
+                .collection('materias')
+                .doc(String(materiaId))
+                .get();
             if (!materiaDoc.exists) {
                 res.status(404).send({ error: 'La materia no existe.' });
                 return;
@@ -1994,12 +2430,16 @@ exports.cf_upsertSchedule = (0, https_1.onRequest)({ cors: true, invoker: 'publi
             return;
         }
         const anioLectivo = Number(anio) || new Date().getFullYear();
-        if (!Number.isInteger(anioLectivo) || anioLectivo < 2000 || anioLectivo > 2100) {
+        if (!Number.isInteger(anioLectivo) ||
+            anioLectivo < 2000 ||
+            anioLectivo > 2100) {
             res.status(400).send({ error: 'El año lectivo es inválido.' });
             return;
         }
         const esNuevo = !id;
-        const ref = id ? db.collection('horarios').doc(String(id)) : db.collection('horarios').doc();
+        const ref = id
+            ? db.collection('horarios').doc(String(id))
+            : db.collection('horarios').doc();
         await ref.set({
             nivel,
             curso: String(curso || '').trim(),
@@ -2015,7 +2455,9 @@ exports.cf_upsertSchedule = (0, https_1.onRequest)({ cors: true, invoker: 'publi
             updatedAt: firestore_1.FieldValue.serverTimestamp(),
             ...(esNuevo ? { createdAt: firestore_1.FieldValue.serverTimestamp() } : {}),
         }, { merge: true });
-        res.status(esNuevo ? 201 : 200).send({ id: ref.id, message: 'Horario guardado correctamente.' });
+        res
+            .status(esNuevo ? 201 : 200)
+            .send({ id: ref.id, message: 'Horario guardado correctamente.' });
     }
     catch (error) {
         console.error('Error en cf_upsertSchedule:', error);
@@ -2030,7 +2472,9 @@ exports.cf_deleteSchedule = (0, https_1.onRequest)({ cors: true, invoker: 'publi
     try {
         const callerClaims = await verifyAuth(req);
         if (callerClaims.role !== 'user_admin') {
-            res.status(403).send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+            res
+                .status(403)
+                .send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
             return;
         }
         const scheduleId = req.body?.scheduleId || req.query.scheduleId;
@@ -2045,7 +2489,9 @@ exports.cf_deleteSchedule = (0, https_1.onRequest)({ cors: true, invoker: 'publi
             return;
         }
         await ref.delete();
-        res.status(200).send({ message: 'Bloque horario eliminado correctamente.' });
+        res
+            .status(200)
+            .send({ message: 'Bloque horario eliminado correctamente.' });
     }
     catch (error) {
         console.error('Error en cf_deleteSchedule:', error);

@@ -27,31 +27,75 @@ export const AuthProvider = ({ children }) => {
         try {
           // Obtener los claims personalizados para el rol
           const idTokenResult = await firebaseUser.getIdTokenResult(true);
-          const role = idTokenResult.claims.role || 'Estudiante'; // Por defecto alumno si no posee claims
+          const claimsRole = idTokenResult.claims.role || null;
           const studentId = idTokenResult.claims.studentId || null;
 
-          // Buscar datos de perfil extendidos en Firestore
-          let profileData = {};
-          if (role === 'Estudiante') {
-            const docRef = doc(db, 'students', firebaseUser.uid);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-              profileData = docSnap.data();
+          // Perfil previo en caché: permite seguir operando si Firestore
+          // rechaza la lectura puntual de un documento de perfil.
+          let cached = null;
+          try {
+            const saved = localStorage.getItem('school_user');
+            cached = saved ? JSON.parse(saved) : null;
+          } catch {
+            cached = null;
+          }
+          if (
+            cached &&
+            (cached.uid !== firebaseUser.uid ||
+              cached.email !== firebaseUser.email)
+          ) {
+            cached = null;
+          }
+
+          const safeGetDoc = async (collectionName) => {
+            try {
+              const snapshot = await getDoc(
+                doc(db, collectionName, firebaseUser.uid)
+              );
+              return snapshot.exists() ? snapshot.data() : null;
+            } catch (error) {
+              console.warn(
+                `No se pudo leer ${collectionName}/${firebaseUser.uid}:`,
+                error?.code || error?.message || error
+              );
+              return null;
             }
+          };
+
+          // Buscar datos de perfil extendidos en Firestore. Si los claims
+          // no traen rol, se infiere a partir del perfil del usuario.
+          let profileData = null;
+          let role = claimsRole;
+          if (claimsRole === 'Estudiante') {
+            profileData = await safeGetDoc('students');
+          } else if (claimsRole) {
+            profileData = await safeGetDoc('users');
           } else {
-            const docRef = doc(db, 'users', firebaseUser.uid);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-              profileData = docSnap.data();
+            const userProfile = await safeGetDoc('users');
+            if (userProfile) {
+              profileData = userProfile;
+              role = userProfile.role || cached?.role || 'Padre';
+            } else {
+              const studentProfile = await safeGetDoc('students');
+              if (studentProfile) {
+                profileData = studentProfile;
+                role = studentProfile.role || 'Estudiante';
+              }
             }
           }
 
+          role = role || cached?.role || 'Estudiante';
+          profileData = {
+            ...(cached || {}),
+            ...(profileData || {}),
+          };
+
           const loggedUser = {
+            ...profileData,
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             role,
             studentId,
-            ...profileData,
           };
 
           setUser(loggedUser);

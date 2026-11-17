@@ -928,6 +928,28 @@ const AdminPanel = () => {
                 </div>
               </button>
             )}
+            {user?.role === 'user_admin' && (
+              <button
+                onClick={() => navigate('/pagos-pendientes')}
+                className="px-6 py-2.5 rounded-full font-label font-bold text-sm transition-all cursor-pointer text-slate-600 hover:text-slate-900"
+              >
+                <div className="flex items-center gap-2">
+                  <Icon name="fact_check" className="text-lg" />
+                  <span>Pagos Pendientes</span>
+                </div>
+              </button>
+            )}
+            {user?.role === 'user_admin' && (
+              <button
+                onClick={() => navigate('/solicitudes-inscripcion')}
+                className="px-6 py-2.5 rounded-full font-label font-bold text-sm transition-all cursor-pointer text-slate-600 hover:text-slate-900"
+              >
+                <div className="flex items-center gap-2">
+                  <Icon name="assignment" className="text-lg" />
+                  <span>Solicitudes</span>
+                </div>
+              </button>
+            )}
           </div>
         </div>
 
