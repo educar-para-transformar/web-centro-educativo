@@ -54,6 +54,100 @@ Cuando la rama `develop` sea estable y esté lista para la entrega oficial:
 
 ---
 
+## 🗺️ Rutas y Funcionalidades de la App
+
+Todas las rutas están declaradas en `src/App.jsx` (React Router). Se agrupan por tipo de acceso:
+
+### 🌐 Públicas
+| Ruta | Página | Funcionalidad |
+|---|---|---|
+| `/` | `Home` | Inicio: hero, presentación de niveles, campus y servicios. |
+| `/levels` | `Levels` | Detalle de los niveles educativos (inicial, primaria, secundaria) y CTA para agendar visita. |
+| `/gallery` | `Gallery` | Galería de espacios del campus con agendado de visitas. |
+| `/news` | `News` | Noticias y eventos de la comunidad (permite alta de noticias). |
+| `/wellness` | `Wellness` | Servicios de bienestar: orientación, salud, nutrición y relajación. |
+| `/contact` | `Contact` | Formulario de contacto e información institucional. |
+| `/register` | `Registration` | Solicitud pública de inscripción en 3 pasos (nivel, tutor y alumno); queda pendiente de revisión del administrador. |
+| `/employment-request` | `EmploymentRequest` | Postulación espontánea de personal (docente, administrativo y servicios). |
+| `/privacy` | `Privacy` | Política de privacidad del sitio. |
+
+### 🔐 Autenticación
+| Ruta | Página | Funcionalidad |
+|---|---|---|
+| `/login` | `Login` | Inicio de sesión (admin/staff por email y contraseña; alumno por `studentID_login`). |
+| `/forgot-password` | `ForgotPassword` | Recuperación de contraseña (para alumnos el enlace se envía al correo del tutor). |
+| `/reset-password` | `ResetPassword` | Definición de una nueva contraseña. |
+
+### 🧑💼 Paneles por rol
+| Ruta | Página | Funcionalidad |
+|---|---|---|
+| `/admin` | `AdminPanel` | Gestión de tutores, estudiantes, personal, materias y activación/restablecimiento de credenciales. |
+| `/reportes-pagos` | `ReportesPagos` | Listados de cuotas, pagos e ingresos del centro educativo. |
+| `/pagos-pendientes` | `PagosPendientes` | Revisión de comprobantes de pago subidos por tutores: aprobar o rechazar. |
+| `/solicitudes-inscripcion` | `SolicitudesInscripcion` | Revisión de solicitudes públicas: aceptar (alta automática de tutor y alumnos) o rechazar. |
+| `/panel-alumno` | `StudentPanel` | Boletín de calificaciones, asistencias, horario, materiales descargables y novedades. |
+| `/panel-docente` | `TeacherPanel` | Calificaciones, asistencia por fecha y materiales de las materias asignadas. |
+| `/panel-tutor` | `ParentPanel` | Seguimiento académico del hijo, materiales, horarios, asistencias y cuotas con comprobantes. |
+
+### 📎 Otras
+| Ruta | Página | Funcionalidad |
+|---|---|---|
+| `/tp4` | `Tp4` | Respuesta de la actividad de Integración Continua (Unidad 4). |
+| `*` | `NotFound` | Página 404 para rutas inexistentes. |
+
+---
+
+## Funcionalidades recientes
+
+El backend de estas funcionalidades corre en `backend/` y se expone mediante los endpoints `cf_*` (Vercel). Las escrituras se realizan exclusivamente desde el servidor con el Admin SDK.
+
+### Materiales de estudio con archivos
+
+* El docente, desde `/panel-docente`, pestaña **Materiales**, publica un material con título, descripción, tipo y un enlace o un archivo adjunto (máximo **700 KB**).
+* El alumno y el tutor pueden descargar el archivo desde sus paneles. La descarga valida que el alumno pertenezca a la materia o que el tutor sea responsable del alumno.
+* La metadata liviana se guarda en `materiales`; el contenido base64 se guarda en `materialFiles/{materialId}`. Los enlaces externos siguen funcionando como alternativa.
+* Endpoints: `cf_getMateriaMaterials`, `cf_upsertMaterial`, `cf_deleteMaterial`, `cf_getMaterialFile`.
+
+### Asistencia por materia y fecha
+
+* El docente elige una materia y una fecha, marca a cada alumno como **presente**, **ausente**, **tarde** o **justificada**, agrega observaciones y guarda con `cf_saveAttendance`.
+* El panel del docente recupera los registros existentes con `cf_getMateriaAttendance`; los ausentes se muestran sin duplicar filas.
+* Alumnos y tutores continúan consultando el resumen y el detalle de asistencias desde sus paneles.
+
+### Cuotas con comprobante y revisión
+
+* En `/panel-tutor`, pestaña **Cuotas**, el tutor ve importe, pagado, saldo, vencimiento y estado de cada cuota.
+* El tutor adjunta un comprobante (imagen o PDF, máximo **700 KB**) indicando importe, medio de pago, fecha y observación. El pago queda en estado **pendiente** (`cf_submitPayment`).
+* No se permite más de un comprobante pendiente para la misma cuota y tutor.
+* El administrador revisa los comprobantes en `/pagos-pendientes`, puede descargarlos y aprobarlos o rechazarlos con motivo (`cf_getPagosPendientes`, `cf_reviewPayment`, `cf_getPagoComprobante`).
+* Solo los pagos **aprobados** se suman al total pagado de la cuota. Los pagos históricos sin campo `estado` se consideran aprobados.
+* El archivo se guarda en `pagosComprobantes/{pagoId}`.
+
+### Solicitudes de inscripción con alta automática
+
+* El formulario público `/register` envía la solicitud con `cf_createEnrollmentRequest`; no crea credenciales y evita solicitudes pendientes duplicadas para el mismo correo.
+* El administrador las revisa en `/solicitudes-inscripcion`, con filtros por estado (`pendiente`, `aceptado`, `rechazado`).
+* Al **aceptar**, se crean automáticamente la cuenta del tutor (rol `Padre`) y las cuentas de los alumnos (rol `Estudiante`, contraseña inicial = DNI). Se envían por correo el enlace de verificación del tutor y los enlaces de activación de los alumnos (válidos 48 horas).
+* Al **rechazar**, se envía un correo al tutor con el motivo indicado.
+* Endpoints: `cf_getEnrollmentRequests`, `cf_updateEnrollmentRequest`.
+
+### Seguridad de las nuevas colecciones
+
+`firestore.rules` bloquea el acceso directo desde el cliente a `materialFiles`, `pagosComprobantes` y `solicitudesInscripcion`; solo las Cloud Functions pueden leerlas o escribirlas.
+
+| Endpoint | Rol habilitado | Uso |
+|---|---|---|
+| `cf_getMateriaMaterials` | Staff (docente de la materia) | Listar materiales de una materia. |
+| `cf_upsertMaterial` / `cf_deleteMaterial` | Staff (docente de la materia) | Crear, actualizar o eliminar materiales. |
+| `cf_getMaterialFile` | Estudiante, Padre, Staff | Descargar el archivo de un material. |
+| `cf_saveAttendance` / `cf_getMateriaAttendance` | Staff (docente de la materia) | Guardar y consultar asistencia por fecha. |
+| `cf_createEnrollmentRequest` | Público | Recibir una solicitud de inscripción. |
+| `cf_getEnrollmentRequests` / `cf_updateEnrollmentRequest` | `user_admin` | Revisar, aceptar o rechazar solicitudes. |
+| `cf_submitPayment` | Padre | Enviar un comprobante de pago. |
+| `cf_getPagosPendientes` / `cf_reviewPayment` / `cf_getPagoComprobante` | `user_admin` | Revisar comprobantes y actualizar el estado del pago. |
+
+---
+
 ## 🔄 Optimización del Ciclo de Desarrollo (Unidad 4)
 
 * **Tipo aplicado:** Integración Continua (CI) con Entrega/Despliegue Continuo (CD) dentro de un flujo Git Flow.

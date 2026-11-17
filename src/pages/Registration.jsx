@@ -27,6 +27,12 @@ const NIVELES = [
 
 const PASOS = ['Nivel', 'Tutor', 'Alumno'];
 
+const FUNCTIONS_BASE_URL =
+  import.meta.env.VITE_FUNCTIONS_BASE_URL ||
+  (import.meta.env.DEV
+    ? 'http://127.0.0.1:5001/centro-educativo-f5cc5/us-central1'
+    : 'https://us-central1-centro-educativo-f5cc5.cloudfunctions.net');
+
 const Registration = () => {
   const navigate = useNavigate();
   const [pasoActual, setPasoActual] = useState(1);
@@ -45,18 +51,50 @@ const Registration = () => {
   });
   const [errores, setErrores] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const siguientePasoRegistracion = () => {
     if (validarPaso()) setPasoActual(pasoActual + 1);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validarPaso()) return;
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
+    setSubmitError('');
+    try {
+      const response = await fetch(
+        `${FUNCTIONS_BASE_URL}/cf_createEnrollmentRequest`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nivel: datosFormulario.nivel,
+            parentName: datosFormulario.nombreTutor,
+            parentDni: datosFormulario.dniTutor,
+            parentEmail: datosFormulario.correo,
+            telefono: datosFormulario.telefono,
+            nombreAlumno: datosFormulario.nombreAlumno,
+            dniAlumno: datosFormulario.dniAlumno,
+            fechaNacimiento: datosFormulario.fechaNacimiento,
+            observaciones: datosFormulario.observaciones,
+          }),
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          data.error || 'No se pudo enviar la solicitud de inscripción.'
+        );
+      }
       setShowSuccessModal(true);
-    }, 1500);
+    } catch (err) {
+      console.error('Error enviando inscripción:', err);
+      setSubmitError(
+        err.message || 'No se pudo enviar la solicitud de inscripción.'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const pasoAnterior = () => {
@@ -435,6 +473,12 @@ const Registration = () => {
                 </div>
               </div>
             </section>
+          )}
+
+          {submitError && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {submitError}
+            </div>
           )}
 
           <div className="botones-navegacion">
