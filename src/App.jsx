@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom';
 import Footer from './components/Footer';
 import ChangePasswordModal from './components/organisms/ChangePasswordModal';
+import ActivateStudent from './pages/ActivateStudent';
 import AdminPanel from './pages/AdminPanel';
 import Contact from './pages/Contact';
 import EmploymentRequest from './pages/EmploymentRequest';
@@ -39,6 +40,8 @@ function App() {
         <Route path="/levels" element={<Levels />} />
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/activate-student" element={<ActivateStudent />} />
+        <Route path="/auth-action" element={<ActivateStudent />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/admin" element={<AdminPanel />} />
         <Route path="/reportes-pagos" element={<ReportesPagos />} />

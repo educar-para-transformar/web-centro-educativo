@@ -315,19 +315,34 @@ const UserMenu = ({
             </button>
           )}
           {isParent && (
-            <button
-              type="button"
-              onClick={() => {
-                navigate('/panel-tutor');
-                setIsUserMenuOpen(false);
-              }}
-              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors text-sm font-semibold cursor-pointer text-left focus:outline-none"
-            >
-              <span className="material-symbols-outlined text-slate-400 text-lg">
-                family_restroom
-              </span>
-              Panel del tutor
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  navigate('/panel-tutor?tab=cuotas');
+                  setIsUserMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors text-sm font-semibold cursor-pointer text-left focus:outline-none"
+              >
+                <span className="material-symbols-outlined text-orange-500 text-lg">
+                  upload_file
+                </span>
+                Subir comprobante
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  navigate('/panel-tutor');
+                  setIsUserMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors text-sm font-semibold cursor-pointer text-left focus:outline-none"
+              >
+                <span className="material-symbols-outlined text-slate-400 text-lg">
+                  family_restroom
+                </span>
+                Panel del tutor
+              </button>
+            </>
           )}
           <div className="border-t border-slate-100 my-1"></div>
           <button
@@ -577,19 +592,34 @@ const MobileDrawer = ({
                 </button>
               )}
               {isParent && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigate('/panel-tutor');
-                    onClose();
-                  }}
-                  className="mobile-action-btn profile-btn"
-                >
-                  <span className="material-symbols-outlined text-lg">
-                    family_restroom
-                  </span>
-                  Panel del tutor
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigate('/panel-tutor?tab=cuotas');
+                      onClose();
+                    }}
+                    className="mobile-action-btn profile-btn"
+                  >
+                    <span className="material-symbols-outlined text-lg text-orange-500">
+                      upload_file
+                    </span>
+                    Subir comprobante
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigate('/panel-tutor');
+                      onClose();
+                    }}
+                    className="mobile-action-btn profile-btn"
+                  >
+                    <span className="material-symbols-outlined text-lg">
+                      family_restroom
+                    </span>
+                    Panel del tutor
+                  </button>
+                </>
               )}
               <button
                 type="button"

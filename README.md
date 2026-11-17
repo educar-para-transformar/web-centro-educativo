@@ -70,6 +70,8 @@ Todas las rutas están declaradas en `src/App.jsx` (React Router). Se agrupan po
 | `/register` | `Registration` | Solicitud pública de inscripción en 3 pasos (nivel, tutor y alumno); queda pendiente de revisión del administrador. |
 | `/employment-request` | `EmploymentRequest` | Postulación espontánea de personal (docente, administrativo y servicios). |
 | `/privacy` | `Privacy` | Política de privacidad del sitio. |
+| `/activate-student` | `ActivateStudent` | Activación de la cuenta del estudiante desde el link enviado por correo (`?studentId=&token=`): define contraseña nueva. |
+| `/auth-action` | `ActivateStudent` | Destino configurado en `REDIRECT_URL`; recibe los enlaces de verificación/restablecimiento y deriva a la activación del estudiante. |
 
 ### 🔐 Autenticación
 | Ruta | Página | Funcionalidad |
@@ -81,13 +83,13 @@ Todas las rutas están declaradas en `src/App.jsx` (React Router). Se agrupan po
 ### 🧑💼 Paneles por rol
 | Ruta | Página | Funcionalidad |
 |---|---|---|
-| `/admin` | `AdminPanel` | Gestión de tutores, estudiantes, personal, materias y activación/restablecimiento de credenciales. |
-| `/reportes-pagos` | `ReportesPagos` | Listados de cuotas, pagos e ingresos del centro educativo. |
-| `/pagos-pendientes` | `PagosPendientes` | Revisión de comprobantes de pago subidos por tutores: aprobar o rechazar. |
+| `/admin` | `AdminPanel` | Gestión de tutores, estudiantes, personal, materias y horarios; reenvío de activación/verificación, envío de enlaces de clave y corrección de correo del tutor; seed de materias y calificaciones. |
+| `/reportes-pagos` | `ReportesPagos` | Listados de cuotas, pagos e ingresos; generación de cuotas **impagas**, acceso a pagos pendientes y envío manual de recordatorios y avisos de deuda. |
+| `/pagos-pendientes` | `PagosPendientes` | Revisión de comprobantes subidos por tutores: vista previa de imagen/PDF, descarga, aprobación o rechazo con motivo. |
 | `/solicitudes-inscripcion` | `SolicitudesInscripcion` | Revisión de solicitudes públicas: aceptar (alta automática de tutor y alumnos) o rechazar. |
 | `/panel-alumno` | `StudentPanel` | Boletín de calificaciones, asistencias, horario, materiales descargables y novedades. |
 | `/panel-docente` | `TeacherPanel` | Calificaciones, asistencia por fecha y materiales de las materias asignadas. |
-| `/panel-tutor` | `ParentPanel` | Seguimiento académico del hijo, materiales, horarios, asistencias y cuotas con comprobantes. |
+| `/panel-tutor` | `ParentPanel` | Seguimiento académico del hijo, materiales, horarios, asistencias y cuotas; carga de comprobantes PDF/imagen, reenvío de activación y envío de enlace de clave. El menú de perfil y el encabezado tienen un acceso directo a "Subir comprobante" (`?tab=cuotas`). |
 
 ### 📎 Otras
 | Ruta | Página | Funcionalidad |
@@ -116,12 +118,25 @@ El backend de estas funcionalidades corre en `backend/` y se expone mediante los
 
 ### Cuotas con comprobante y revisión
 
-* En `/panel-tutor`, pestaña **Cuotas**, el tutor ve importe, pagado, saldo, vencimiento y estado de cada cuota.
+* El botón **Generar cuotas** de `/reportes-pagos` crea cuotas mensuales, de deporte y de transporte en estado **impaga** (`pendiente`), con saldo completo y sin pagos de ejemplo. Si existen pagos de ejemplo de corridas anteriores, se eliminan (`cf_seedCuotas`).
+* En `/panel-tutor`, pestaña **Cuotas**, el tutor ve importe, pagado, saldo, vencimiento y estado de cada cuota. Las impagas muestran el botón **Subir comprobante**; se puede llegar desde el menú de perfil o desde el encabezado del panel.
 * El tutor adjunta un comprobante (imagen o PDF, máximo **700 KB**) indicando importe, medio de pago, fecha y observación. El pago queda en estado **pendiente** (`cf_submitPayment`).
 * No se permite más de un comprobante pendiente para la misma cuota y tutor.
-* El administrador revisa los comprobantes en `/pagos-pendientes`, puede descargarlos y aprobarlos o rechazarlos con motivo (`cf_getPagosPendientes`, `cf_reviewPayment`, `cf_getPagoComprobante`).
+* El administrador revisa los comprobantes en `/pagos-pendientes`, los visualiza inline (imagen o PDF) o los descarga, y los aprueba o rechaza con motivo (`cf_getPagosPendientes`, `cf_reviewPayment`, `cf_getPagoComprobante`).
 * Solo los pagos **aprobados** se suman al total pagado de la cuota. Los pagos históricos sin campo `estado` se consideran aprobados.
 * El archivo se guarda en `pagosComprobantes/{pagoId}`.
+
+### Activación y credenciales
+
+* El administrador puede reenviar el enlace de activación/verificación de tutores y estudiantes, y corregir el correo de un tutor volviendo a enviarlo (`cf_resendActivationLink`, `cf_updateParentEmailAndResend`).
+* El tutor también puede reenviar la activación de sus hijos y enviarles un enlace de restablecimiento de clave (`cf_resetStudentPassword`).
+* El enlace de activación abre `/activate-student?studentId=...&token=...`; allí se valida el token (48 horas) y se define una contraseña de al menos 6 caracteres (`cf_activateStudentAccount`).
+* `/auth-action` es el destino configurado en `REDIRECT_URL` para los enlaces de Firebase.
+
+### Materias y horarios
+
+* Desde `/admin` se puede generar materias y calificaciones de ejemplo por nivel y año (`cf_seedMateriasYCalificaciones`).
+* La pestaña **Horarios** permite listar, crear, editar y eliminar horarios por nivel, curso, división, día, franja horaria y materia (`cf_upsertSchedule`, `cf_deleteSchedule`).
 
 ### Solicitudes de inscripción con alta automática
 
@@ -145,6 +160,13 @@ El backend de estas funcionalidades corre en `backend/` y se expone mediante los
 | `cf_getEnrollmentRequests` / `cf_updateEnrollmentRequest` | `user_admin` | Revisar, aceptar o rechazar solicitudes. |
 | `cf_submitPayment` | Padre | Enviar un comprobante de pago. |
 | `cf_getPagosPendientes` / `cf_reviewPayment` / `cf_getPagoComprobante` | `user_admin` | Revisar comprobantes y actualizar el estado del pago. |
+| `cf_seedCuotas` | `user_admin` | Generar cuotas impagas y quitar los pagos de ejemplo anteriores. |
+| `cf_resendActivationLink` | `user_admin`, Padre (propietario) | Reenviar activación/verificación. |
+| `cf_updateParentEmailAndResend` | `user_admin` | Corregir el correo del tutor y reenviar el enlace. |
+| `cf_resetStudentPassword` | `user_admin`, Padre del alumno | Enviar enlace de restablecimiento de clave. |
+| `cf_activateStudentAccount` | Público (con token válido) | Activar la cuenta del estudiante. |
+| `cf_seedMateriasYCalificaciones` | `user_admin` | Generar materias y calificaciones de ejemplo. |
+| `cf_upsertSchedule` / `cf_deleteSchedule` | `user_admin` | Administrar horarios. |
 
 ---
 
@@ -276,6 +298,7 @@ La contraseña inicial de cada alumno es su DNI (campo `hashedPassword`, encript
 * Panel del alumno "Mi Boletín de Calificaciones" (`/panel-alumno`), con promedios por trimestre, anual y general.
 * Reglas de seguridad de Firestore (`firestore.rules`) aplicadas por los emuladores.
 * Aislamiento de datos: cada alumno solo ve sus propias notas (HU4), aunque el admin puede consultar cualquier alumno con `?studentId=`.
+* Flujo de cuotas: generar cuotas impagas desde `/reportes-pagos`, subir un comprobante desde `/panel-tutor?tab=cuotas` y aprobarlo/rechazarlo desde `/pagos-pendientes`.
 
 ### Solución de problemas
 * **Puertos ocupados**: si un emulador ya está corriendo, cerrá los procesos previos antes de `npm run emulators`, o cambiá los puertos en `firebase.json`.

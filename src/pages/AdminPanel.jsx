@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Icon from '../components/atoms/Icon';
@@ -6,6 +6,14 @@ import SuccessModal from '../components/molecules/SuccessModal';
 import { db, auth } from '../services/firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
+import {
+  resendActivationLink,
+  updateParentEmailAndResend,
+  resetStudentPassword,
+  seedMateriasYCalificaciones,
+  upsertSchedule,
+  deleteSchedule,
+} from '../services/backendApi';
 
 // Catálogo canónico: debe coincidir con functions/src/index.ts y scripts/seed-emulators.mjs.
 const MATERIAS_POR_NIVEL = {
@@ -37,6 +45,15 @@ const MATERIAS_POR_NIVEL = {
     'Educación Física',
   ],
 };
+
+const DIAS_SEMANA = [
+  { value: 1, label: 'Lunes' },
+  { value: 2, label: 'Martes' },
+  { value: 3, label: 'Miércoles' },
+  { value: 4, label: 'Jueves' },
+  { value: 5, label: 'Viernes' },
+  { value: 6, label: 'Sábado' },
+];
 
 const AdminPanel = () => {
   const navigate = useNavigate();
@@ -114,6 +131,41 @@ const AdminPanel = () => {
   const [materiaStudentsSelected, setMateriaStudentsSelected] = useState([]);
   const [isSavingMateriaStudents, setIsSavingMateriaStudents] = useState(false);
   const [materiaStudentsError, setMateriaStudentsError] = useState('');
+
+  // Activación y correo de tutores
+  const [resendLoading, setResendLoading] = useState('');
+  const [emailCorrection, setEmailCorrection] = useState(null);
+  const [emailCorrectionError, setEmailCorrectionError] = useState('');
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
+
+  // Carga de datos de ejemplo
+  const [showSeedMateriasForm, setShowSeedMateriasForm] = useState(false);
+  const [seedMateriasNivel, setSeedMateriasNivel] = useState('inicial');
+  const [seedMateriasAnio, setSeedMateriasAnio] = useState(
+    new Date().getFullYear()
+  );
+  const [isSeedingMaterias, setIsSeedingMaterias] = useState(false);
+
+  // Gestión de horarios
+  const [horariosList, setHorariosList] = useState([]);
+  const [isLoadingHorarios, setIsLoadingHorarios] = useState(false);
+  const [showHorarioForm, setShowHorarioForm] = useState(false);
+  const [editingHorarioId, setEditingHorarioId] = useState(null);
+  const [horarioForm, setHorarioForm] = useState({
+    nivel: 'inicial',
+    curso: '1',
+    division: 'A',
+    dia: 1,
+    horaInicio: '08:00',
+    horaFin: '10:00',
+    materiaId: '',
+    materiaNombre: '',
+    docente: '',
+    aula: '',
+    anio: new Date().getFullYear(),
+  });
+  const [horarioFormError, setHorarioFormError] = useState('');
+  const [isSavingHorario, setIsSavingHorario] = useState(false);
 
   // Filters State
   const [searchFilter, setSearchFilter] = useState('');
@@ -753,6 +805,231 @@ const AdminPanel = () => {
     }
   };
 
+  const handleResendActivation = async (targetType, targetId, label) => {
+    if (!window.confirm(`¿Reenviar el enlace de activación a ${label}?`)) {
+      return;
+    }
+    setResendLoading(`${targetType}-${targetId}`);
+    try {
+      const data = await resendActivationLink(targetType, targetId);
+      setSuccessModalData({
+        title: '¡Enlace reenviado!',
+        message:
+          data.message || 'Se envió un nuevo enlace al correo correspondiente.',
+      });
+      setSuccessModalOpen(true);
+    } catch (err) {
+      alert(`Error al reenviar la activación: ${err.message}`);
+    } finally {
+      setResendLoading('');
+    }
+  };
+
+  const handleSendResetLink = async (studentId, nombre) => {
+    if (
+      !window.confirm(
+        `¿Enviar al tutor de ${nombre} un enlace para restablecer su contraseña?`
+      )
+    ) {
+      return;
+    }
+    try {
+      const data = await resetStudentPassword(studentId);
+      setSuccessModalData({
+        title: '¡Enlace enviado!',
+        message:
+          data.message ||
+          'Se envió el enlace de restablecimiento al correo del tutor.',
+      });
+      setSuccessModalOpen(true);
+    } catch (err) {
+      alert(`Error al enviar el enlace: ${err.message}`);
+    }
+  };
+
+  const handleOpenEmailCorrection = (parent) => {
+    setEmailCorrection({
+      parentUid: parent.id,
+      nombre: parent.nombre || '',
+      currentEmail: parent.email || '',
+      newEmail: '',
+    });
+    setEmailCorrectionError('');
+  };
+
+  const handleSubmitEmailCorrection = async (e) => {
+    e.preventDefault();
+    if (!emailCorrection) return;
+
+    const nuevoEmail = emailCorrection.newEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nuevoEmail)) {
+      setEmailCorrectionError('Ingresá un correo electrónico válido.');
+      return;
+    }
+
+    setIsSavingEmail(true);
+    setEmailCorrectionError('');
+    try {
+      const data = await updateParentEmailAndResend(
+        emailCorrection.parentUid,
+        nuevoEmail
+      );
+      setSuccessModalData({
+        title: '¡Correo actualizado!',
+        message:
+          data.message ||
+          'El correo fue corregido y se envió un nuevo enlace de activación.',
+      });
+      setSuccessModalOpen(true);
+      setEmailCorrection(null);
+      fetchDashboardData();
+    } catch (err) {
+      setEmailCorrectionError(err.message);
+    } finally {
+      setIsSavingEmail(false);
+    }
+  };
+
+  const handleSeedMaterias = async (e) => {
+    e.preventDefault();
+    setIsSeedingMaterias(true);
+    try {
+      const data = await seedMateriasYCalificaciones({
+        nivel: seedMateriasNivel,
+        anio: Number(seedMateriasAnio),
+      });
+      setSuccessModalData({
+        title: '¡Datos de ejemplo generados!',
+        message: `${data.materiasRegistradas || 0} materias y ${data.calificacionesCargadas || 0} calificaciones cargadas.`,
+      });
+      setSuccessModalOpen(true);
+      setShowSeedMateriasForm(false);
+      fetchDashboardData();
+    } catch (err) {
+      alert(`Error al generar los datos: ${err.message}`);
+    } finally {
+      setIsSeedingMaterias(false);
+    }
+  };
+
+  const fetchHorarios = useCallback(async () => {
+    setIsLoadingHorarios(true);
+    try {
+      const snap = await getDocs(collection(db, 'horarios'));
+      setHorariosList(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+    } catch (err) {
+      console.error('Error cargando horarios:', err);
+      setDataError('No se pudieron cargar los horarios.');
+    } finally {
+      setIsLoadingHorarios(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'dashboard' && dashboardSubTab === 'horarios') {
+      fetchHorarios();
+    }
+  }, [activeTab, dashboardSubTab, fetchHorarios]);
+
+  const handleOpenHorarioForm = (horario) => {
+    setHorarioFormError('');
+    if (horario) {
+      setEditingHorarioId(horario.id);
+      setHorarioForm({
+        nivel: horario.nivel || 'inicial',
+        curso: horario.curso || '',
+        division: horario.division || '',
+        dia: Number(horario.dia) || 1,
+        horaInicio: horario.horaInicio || '08:00',
+        horaFin: horario.horaFin || '10:00',
+        materiaId: horario.materiaId || '',
+        materiaNombre: '',
+        docente: horario.docente || '',
+        aula: horario.aula || '',
+        anio: Number(horario.anio) || new Date().getFullYear(),
+      });
+    } else {
+      setEditingHorarioId(null);
+      setHorarioForm({
+        nivel: 'inicial',
+        curso: '1',
+        division: 'A',
+        dia: 1,
+        horaInicio: '08:00',
+        horaFin: '10:00',
+        materiaId: '',
+        materiaNombre: '',
+        docente: '',
+        aula: '',
+        anio: new Date().getFullYear(),
+      });
+    }
+    setShowHorarioForm(true);
+  };
+
+  const handleHorarioFieldChange = (field, value) => {
+    setHorarioForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveHorario = async (e) => {
+    e.preventDefault();
+    setHorarioFormError('');
+
+    if (!horarioForm.materiaId && !horarioForm.materiaNombre.trim()) {
+      setHorarioFormError('Seleccioná una materia o indicá su nombre.');
+      return;
+    }
+
+    setIsSavingHorario(true);
+    try {
+      const data = await upsertSchedule({
+        ...(editingHorarioId ? { id: editingHorarioId } : {}),
+        nivel: horarioForm.nivel,
+        curso: horarioForm.curso,
+        division: horarioForm.division,
+        dia: Number(horarioForm.dia),
+        horaInicio: horarioForm.horaInicio,
+        horaFin: horarioForm.horaFin,
+        materiaId: horarioForm.materiaId || undefined,
+        materiaNombre: horarioForm.materiaNombre.trim() || undefined,
+        docente: horarioForm.docente,
+        aula: horarioForm.aula,
+        anio: Number(horarioForm.anio),
+      });
+      setSuccessModalData({
+        title: '¡Horario guardado!',
+        message: data.message || 'El bloque horario se guardó correctamente.',
+      });
+      setSuccessModalOpen(true);
+      setShowHorarioForm(false);
+      setEditingHorarioId(null);
+      fetchHorarios();
+    } catch (err) {
+      setHorarioFormError(err.message);
+    } finally {
+      setIsSavingHorario(false);
+    }
+  };
+
+  const handleDeleteHorario = async (horario) => {
+    if (
+      !window.confirm(`¿Eliminar el bloque de ${horario.materia || 'materia'}?`)
+    ) {
+      return;
+    }
+    try {
+      const data = await deleteSchedule(horario.id);
+      setSuccessModalData({
+        title: '¡Horario eliminado!',
+        message: data.message || 'El bloque horario se eliminó correctamente.',
+      });
+      setSuccessModalOpen(true);
+      fetchHorarios();
+    } catch (err) {
+      alert(`Error al eliminar el horario: ${err.message}`);
+    }
+  };
+
   // Guardar cambios del formulario de edición
   const handleEditSubmit = async (e) => {
     e.preventDefault();
@@ -860,6 +1137,20 @@ const AdminPanel = () => {
 
     return matchesSearch && matchesLevel;
   });
+
+  const horariosFiltrados = horariosList.filter((horario) => {
+    const texto =
+      `${horario.materia || ''} ${horario.docente || ''} ${horario.aula || ''} ${horario.curso || ''}`.toLowerCase();
+    const busca = searchFilter.toLowerCase();
+    return (
+      texto.includes(busca) &&
+      (levelFilter === 'todos' || (horario.nivel || 'inicial') === levelFilter)
+    );
+  });
+
+  const materiasDelNivelHorario = materiasList.filter(
+    (materia) => (materia.nivel || 'inicial') === horarioForm.nivel
+  );
 
   // Preservar nombres existentes que no estén en el catálogo para no bloquear su edición.
   const opcionesMateriaEdicion = (() => {
@@ -969,7 +1260,9 @@ const AdminPanel = () => {
                       ? 'Buscar por alumno, email del tutor o ID...'
                       : dashboardSubTab === 'staff'
                         ? 'Buscar por docente, email o DNI...'
-                        : 'Buscar materia o docente...'
+                        : dashboardSubTab === 'horarios'
+                          ? 'Buscar por materia, docente o aula...'
+                          : 'Buscar materia o docente...'
                   }
                   value={searchFilter}
                   onChange={(e) => setSearchFilter(e.target.value)}
@@ -1036,6 +1329,16 @@ const AdminPanel = () => {
               >
                 Materias
               </button>
+              <button
+                onClick={() => setDashboardSubTab('horarios')}
+                className={`flex-1 lg:flex-none px-3 lg:px-4 py-2 rounded-lg font-label font-bold text-xs transition-all cursor-pointer border-none whitespace-nowrap ${
+                  dashboardSubTab === 'horarios'
+                    ? 'bg-orange-500 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 bg-transparent'
+                }`}
+              >
+                Horarios
+              </button>
             </div>
 
             {/* Users Table */}
@@ -1059,21 +1362,35 @@ const AdminPanel = () => {
                           inscriptos.
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowCreateMateriaForm(!showCreateMateriaForm)
-                        }
-                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-orange-100 hover:bg-orange-200 text-orange-700 font-bold text-xs transition-all cursor-pointer border-none self-start sm:self-auto"
-                      >
-                        <Icon
-                          name={showCreateMateriaForm ? 'close' : 'add'}
-                          className="text-sm"
-                        />
-                        {showCreateMateriaForm
-                          ? 'Cerrar Formulario'
-                          : 'Nueva Materia'}
-                      </button>
+                      <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowCreateMateriaForm(!showCreateMateriaForm);
+                            setShowSeedMateriasForm(false);
+                          }}
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-orange-100 hover:bg-orange-200 text-orange-700 font-bold text-xs transition-all cursor-pointer border-none"
+                        >
+                          <Icon
+                            name={showCreateMateriaForm ? 'close' : 'add'}
+                            className="text-sm"
+                          />
+                          {showCreateMateriaForm
+                            ? 'Cerrar Formulario'
+                            : 'Nueva Materia'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowSeedMateriasForm(!showSeedMateriasForm);
+                            setShowCreateMateriaForm(false);
+                          }}
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-all cursor-pointer border-none"
+                        >
+                          <Icon name="auto_awesome" className="text-sm" />
+                          Datos de ejemplo
+                        </button>
+                      </div>
                     </div>
 
                     {/* Create Materia Form */}
@@ -1166,6 +1483,62 @@ const AdminPanel = () => {
                           {isCreatingMateria
                             ? 'Guardando...'
                             : 'Registrar Materia'}
+                        </button>
+                      </form>
+                    )}
+
+                    {showSeedMateriasForm && (
+                      <form
+                        onSubmit={handleSeedMaterias}
+                        className="p-6 border-b border-slate-100 bg-slate-50/50 space-y-4 text-left"
+                      >
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Nivel Educativo
+                            </label>
+                            <select
+                              value={seedMateriasNivel}
+                              onChange={(e) =>
+                                setSeedMateriasNivel(e.target.value)
+                              }
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm appearance-none"
+                            >
+                              <option value="inicial">Nivel Inicial</option>
+                              <option value="primaria">Primaria</option>
+                              <option value="secundaria">Secundaria</option>
+                            </select>
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Año Lectivo
+                            </label>
+                            <input
+                              type="number"
+                              min="2000"
+                              max="2100"
+                              value={seedMateriasAnio}
+                              onChange={(e) =>
+                                setSeedMateriasAnio(e.target.value)
+                              }
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm"
+                              required
+                            />
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          Registra las materias del nivel y genera
+                          calificaciones de ejemplo para sus estudiantes.
+                          Reemplaza las calificaciones existentes de ese año.
+                        </p>
+                        <button
+                          type="submit"
+                          disabled={isSeedingMaterias}
+                          className="w-full flex justify-center items-center py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold text-sm rounded-full shadow-lg shadow-orange-600/10 transition-all cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed border-none"
+                        >
+                          {isSeedingMaterias
+                            ? 'Generando...'
+                            : 'Generar materias y calificaciones'}
                         </button>
                       </form>
                     )}
@@ -1388,6 +1761,357 @@ const AdminPanel = () => {
                       </>
                     )}
                   </>
+                ) : dashboardSubTab === 'horarios' ? (
+                  <>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 border-b border-slate-100">
+                      <div className="text-left">
+                        <h3 className="font-headline text-lg font-bold text-slate-800">
+                          Horarios Institucionales
+                        </h3>
+                        <p className="text-sm text-slate-500 mt-0.5">
+                          Bloques horarios por nivel, curso y división.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowHorarioForm((visible) => !visible)
+                        }
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-orange-100 hover:bg-orange-200 text-orange-700 font-bold text-xs transition-all cursor-pointer border-none self-start sm:self-auto"
+                      >
+                        <Icon
+                          name={showHorarioForm ? 'close' : 'add'}
+                          className="text-sm"
+                        />
+                        {showHorarioForm ? 'Cerrar Formulario' : 'Nuevo Bloque'}
+                      </button>
+                    </div>
+
+                    {showHorarioForm && (
+                      <form
+                        onSubmit={handleSaveHorario}
+                        className="p-6 border-b border-slate-100 bg-slate-50/50 space-y-4 text-left"
+                      >
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Nivel
+                            </label>
+                            <select
+                              value={horarioForm.nivel}
+                              onChange={(e) => {
+                                handleHorarioFieldChange(
+                                  'nivel',
+                                  e.target.value
+                                );
+                                handleHorarioFieldChange('materiaId', '');
+                              }}
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm appearance-none"
+                            >
+                              <option value="inicial">Nivel Inicial</option>
+                              <option value="primaria">Primaria</option>
+                              <option value="secundaria">Secundaria</option>
+                            </select>
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Curso
+                            </label>
+                            <input
+                              type="text"
+                              value={horarioForm.curso}
+                              onChange={(e) =>
+                                handleHorarioFieldChange(
+                                  'curso',
+                                  e.target.value
+                                )
+                              }
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm"
+                              required
+                            />
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              División
+                            </label>
+                            <input
+                              type="text"
+                              value={horarioForm.division}
+                              onChange={(e) =>
+                                handleHorarioFieldChange(
+                                  'division',
+                                  e.target.value
+                                )
+                              }
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Día
+                            </label>
+                            <select
+                              value={horarioForm.dia}
+                              onChange={(e) =>
+                                handleHorarioFieldChange(
+                                  'dia',
+                                  Number(e.target.value)
+                                )
+                              }
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm appearance-none"
+                            >
+                              {DIAS_SEMANA.map((dia) => (
+                                <option key={dia.value} value={dia.value}>
+                                  {dia.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Desde
+                            </label>
+                            <input
+                              type="time"
+                              value={horarioForm.horaInicio}
+                              onChange={(e) =>
+                                handleHorarioFieldChange(
+                                  'horaInicio',
+                                  e.target.value
+                                )
+                              }
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm"
+                              required
+                            />
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Hasta
+                            </label>
+                            <input
+                              type="time"
+                              value={horarioForm.horaFin}
+                              onChange={(e) =>
+                                handleHorarioFieldChange(
+                                  'horaFin',
+                                  e.target.value
+                                )
+                              }
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm"
+                              required
+                            />
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Año Lectivo
+                            </label>
+                            <input
+                              type="number"
+                              min="2000"
+                              max="2100"
+                              value={horarioForm.anio}
+                              onChange={(e) =>
+                                handleHorarioFieldChange('anio', e.target.value)
+                              }
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm"
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Materia del listado
+                            </label>
+                            <select
+                              value={horarioForm.materiaId}
+                              onChange={(e) =>
+                                handleHorarioFieldChange(
+                                  'materiaId',
+                                  e.target.value
+                                )
+                              }
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm appearance-none"
+                            >
+                              <option value="">Sin materia del listado</option>
+                              {materiasDelNivelHorario.map((materia) => (
+                                <option key={materia.id} value={materia.id}>
+                                  {materia.nombre}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Otra materia
+                            </label>
+                            <input
+                              type="text"
+                              value={horarioForm.materiaNombre}
+                              onChange={(e) =>
+                                setHorarioForm((prev) => ({
+                                  ...prev,
+                                  materiaNombre: e.target.value,
+                                  materiaId: e.target.value
+                                    ? ''
+                                    : prev.materiaId,
+                                }))
+                              }
+                              placeholder="Nombre de la materia"
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Docente
+                            </label>
+                            <input
+                              type="text"
+                              value={horarioForm.docente}
+                              onChange={(e) =>
+                                handleHorarioFieldChange(
+                                  'docente',
+                                  e.target.value
+                                )
+                              }
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Aula
+                            </label>
+                            <input
+                              type="text"
+                              value={horarioForm.aula}
+                              onChange={(e) =>
+                                handleHorarioFieldChange('aula', e.target.value)
+                              }
+                              className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-orange-500 focus:outline-none transition-all text-sm"
+                            />
+                          </div>
+                        </div>
+
+                        {horarioFormError && (
+                          <p className="text-xs text-red-500 font-bold bg-red-50 border border-red-100 p-3 rounded-xl">
+                            {horarioFormError}
+                          </p>
+                        )}
+
+                        <button
+                          type="submit"
+                          disabled={isSavingHorario}
+                          className="w-full flex justify-center items-center py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold text-sm rounded-full shadow-lg shadow-orange-600/10 transition-all cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed border-none"
+                        >
+                          {isSavingHorario
+                            ? 'Guardando...'
+                            : editingHorarioId
+                              ? 'Actualizar Bloque'
+                              : 'Registrar Bloque'}
+                        </button>
+                      </form>
+                    )}
+
+                    {isLoadingHorarios ? (
+                      <div className="p-12 text-center text-slate-500">
+                        <div className="animate-spin h-8 w-8 border-4 border-orange-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+                        <p className="font-semibold">Cargando horarios...</p>
+                      </div>
+                    ) : horariosFiltrados.length === 0 ? (
+                      <div className="p-16 text-center text-slate-500">
+                        <Icon
+                          name="calendar_month"
+                          className="text-5xl text-slate-300 mb-4"
+                        />
+                        <p className="font-bold text-lg">
+                          No hay bloques horarios registrados
+                        </p>
+                        <p className="text-sm mt-1">
+                          Usá "Nuevo Bloque" para cargar el primero.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-400 font-label font-bold text-xs uppercase tracking-wider">
+                              <th className="py-4 px-6">Día y Horario</th>
+                              <th className="py-4 px-6">Nivel / Curso</th>
+                              <th className="py-4 px-6">Materia</th>
+                              <th className="py-4 px-6">Docente / Aula</th>
+                              <th className="py-4 px-6 text-right">Acciones</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-body text-sm text-slate-700">
+                            {horariosFiltrados.map((horario) => (
+                              <tr
+                                key={horario.id}
+                                className="hover:bg-slate-50/50 transition-colors"
+                              >
+                                <td className="py-5 px-6 whitespace-nowrap">
+                                  <span className="font-bold text-slate-800 block">
+                                    {DIAS_SEMANA.find(
+                                      (dia) => dia.value === Number(horario.dia)
+                                    )?.label || '—'}
+                                  </span>
+                                  <span className="text-xs text-slate-400 font-mono">
+                                    {horario.horaInicio} - {horario.horaFin} ·{' '}
+                                    {horario.anio}
+                                  </span>
+                                </td>
+                                <td className="py-5 px-6">
+                                  <span className="font-semibold">
+                                    {horario.nivel || '—'}
+                                  </span>
+                                  <span className="text-xs text-slate-400 block">
+                                    {horario.curso || '—'}
+                                    {horario.division
+                                      ? ` · ${horario.division}`
+                                      : ''}
+                                  </span>
+                                </td>
+                                <td className="py-5 px-6 font-semibold">
+                                  {horario.materia || '—'}
+                                </td>
+                                <td className="py-5 px-6">
+                                  <span className="block">
+                                    {horario.docente || '—'}
+                                  </span>
+                                  <span className="text-xs text-slate-400">
+                                    {horario.aula || 'Sin aula'}
+                                  </span>
+                                </td>
+                                <td className="py-5 px-6 text-right whitespace-nowrap">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleOpenHorarioForm(horario)
+                                    }
+                                    title="Editar bloque horario"
+                                    className="p-2.5 rounded-full bg-slate-100 hover:bg-orange-100 hover:text-orange-700 text-slate-500 transition-all cursor-pointer border-none"
+                                  >
+                                    <Icon name="edit" className="text-base" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteHorario(horario)}
+                                    title="Eliminar bloque horario"
+                                    className="p-2.5 rounded-full bg-slate-100 hover:bg-red-100 hover:text-red-700 text-slate-500 transition-all cursor-pointer border-none"
+                                  >
+                                    <Icon name="delete" className="text-base" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </>
                 ) : (
                     dashboardSubTab === 'students'
                       ? filteredStudents.length === 0
@@ -1567,6 +2291,37 @@ const AdminPanel = () => {
                                       >
                                         <Icon name="edit" className="text-sm" />
                                       </button>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleResendActivation(
+                                            'student',
+                                            student.id,
+                                            `estudiante ${student.nombre}`
+                                          )
+                                        }
+                                        disabled={
+                                          resendLoading ===
+                                          `student-${student.id}`
+                                        }
+                                        title="Reenviar enlace de activación del estudiante"
+                                        className="p-1 rounded bg-white text-orange-600 hover:bg-orange-50 transition-colors cursor-pointer border border-orange-200/50 disabled:opacity-50"
+                                      >
+                                        <Icon name="mail" className="text-sm" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleSendResetLink(
+                                            student.id,
+                                            student.nombre
+                                          )
+                                        }
+                                        title="Enviar enlace de restablecimiento al tutor"
+                                        className="p-1 rounded bg-white text-orange-600 hover:bg-orange-50 transition-colors cursor-pointer border border-orange-200/50"
+                                      >
+                                        <Icon name="link" className="text-sm" />
+                                      </button>
                                     </div>
                                     {student.parentId && (
                                       <div className="flex items-center gap-1.5 bg-indigo-50/50 p-1.5 rounded-lg border border-indigo-100">
@@ -1614,6 +2369,46 @@ const AdminPanel = () => {
                                             className="text-sm"
                                           />
                                         </button>
+                                        {parent.id && (
+                                          <>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                handleResendActivation(
+                                                  'parent',
+                                                  parent.id,
+                                                  `tutor ${parent.nombre}`
+                                                )
+                                              }
+                                              disabled={
+                                                resendLoading ===
+                                                `parent-${parent.id}`
+                                              }
+                                              title="Reenviar verificación de correo del tutor"
+                                              className="p-1 rounded bg-white text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer border border-indigo-200/50 disabled:opacity-50"
+                                            >
+                                              <Icon
+                                                name="mail"
+                                                className="text-sm"
+                                              />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                handleOpenEmailCorrection(
+                                                  parent
+                                                )
+                                              }
+                                              title="Corregir correo del tutor y reenviar activación"
+                                              className="p-1 rounded bg-white text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer border border-indigo-200/50"
+                                            >
+                                              <Icon
+                                                name="alternate_email"
+                                                className="text-sm"
+                                              />
+                                            </button>
+                                          </>
+                                        )}
                                       </div>
                                     )}
                                   </div>
@@ -1847,6 +2642,73 @@ const AdminPanel = () => {
                                     </button>
                                   </div>
                                 </div>
+                              )}
+                            </div>
+
+                            <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-50">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleResendActivation(
+                                    'student',
+                                    student.id,
+                                    `estudiante ${student.nombre}`
+                                  )
+                                }
+                                disabled={
+                                  resendLoading === `student-${student.id}`
+                                }
+                                className="flex-1 py-2 px-2 rounded-xl bg-orange-50 text-orange-700 font-bold text-[10px] flex items-center justify-center gap-1 cursor-pointer border border-orange-200/50 disabled:opacity-50"
+                              >
+                                <Icon name="mail" className="text-sm" />
+                                Activar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleSendResetLink(
+                                    student.id,
+                                    student.nombre
+                                  )
+                                }
+                                className="flex-1 py-2 px-2 rounded-xl bg-orange-50 text-orange-700 font-bold text-[10px] flex items-center justify-center gap-1 cursor-pointer border border-orange-200/50"
+                              >
+                                <Icon name="link" className="text-sm" />
+                                Reset link
+                              </button>
+                              {student.parentId && parent.id && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleResendActivation(
+                                        'parent',
+                                        parent.id,
+                                        `tutor ${parent.nombre}`
+                                      )
+                                    }
+                                    disabled={
+                                      resendLoading === `parent-${parent.id}`
+                                    }
+                                    className="flex-1 py-2 px-2 rounded-xl bg-indigo-50 text-indigo-700 font-bold text-[10px] flex items-center justify-center gap-1 cursor-pointer border border-indigo-200/50 disabled:opacity-50"
+                                  >
+                                    <Icon name="mail" className="text-sm" />
+                                    Verificar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleOpenEmailCorrection(parent)
+                                    }
+                                    className="flex-1 py-2 px-2 rounded-xl bg-indigo-50 text-indigo-700 font-bold text-[10px] flex items-center justify-center gap-1 cursor-pointer border border-indigo-200/50"
+                                  >
+                                    <Icon
+                                      name="alternate_email"
+                                      className="text-sm"
+                                    />
+                                    Email
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>
@@ -2488,6 +3350,90 @@ const AdminPanel = () => {
         iconBg="bg-green-100"
         iconColor="text-green-600"
       />
+
+      {emailCorrection && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-lg bg-white rounded-[2rem] border border-slate-200 shadow-2xl p-8 animate-scale-in text-left">
+            <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
+              <h3 className="font-headline text-2xl font-bold text-slate-800 flex items-center gap-2">
+                <Icon name="alternate_email" className="text-orange-500" />
+                Corregir correo del tutor
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEmailCorrection(null)}
+                className="p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 cursor-pointer border-none"
+              >
+                <Icon name="close" className="text-lg" />
+              </button>
+            </div>
+            <form
+              onSubmit={handleSubmitEmailCorrection}
+              className="space-y-5 text-left"
+            >
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Tutor
+                </label>
+                <span className="font-semibold text-slate-800">
+                  {emailCorrection.nombre || 'Tutor'}
+                </span>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Correo actual
+                </label>
+                <span className="text-sm text-slate-500 font-mono">
+                  {emailCorrection.currentEmail || 'Sin correo registrado'}
+                </span>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="nuevoEmailTutor"
+                  className="text-xs font-bold text-slate-500 uppercase tracking-wider"
+                >
+                  Nuevo correo electrónico
+                </label>
+                <input
+                  id="nuevoEmailTutor"
+                  type="email"
+                  required
+                  value={emailCorrection.newEmail}
+                  onChange={(e) =>
+                    setEmailCorrection((prev) => ({
+                      ...prev,
+                      newEmail: e.target.value,
+                    }))
+                  }
+                  placeholder="tutor@ejemplo.com"
+                  className="px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:bg-white focus:border-orange-500 focus:outline-none transition-all text-sm"
+                />
+              </div>
+              {emailCorrectionError && (
+                <p className="text-xs text-red-500 font-bold bg-red-50 border border-red-100 p-3 rounded-xl">
+                  {emailCorrectionError}
+                </p>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEmailCorrection(null)}
+                  className="flex-1 py-3 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm transition-all cursor-pointer border-none"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEmail}
+                  className="flex-1 py-3 rounded-full bg-orange-600 hover:bg-orange-700 text-white font-bold text-sm transition-all cursor-pointer border-none disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {isSavingEmail ? 'Guardando...' : 'Corregir y reenviar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal de Edición de Datos */}
       {editingUser && (
