@@ -879,40 +879,6 @@ export const cf_registrarPago = onRequest(
 
 /* ------------------------------ Seed de cuotas --------------------------- */
 
-function calcularPagoSeed(
-  index: number,
-  anio: number,
-  mes: number,
-  importe: number
-) {
-  const actual = fechaArgentina();
-  const claveActual = periodKey(
-    actual.getUTCFullYear(),
-    actual.getUTCMonth() + 1
-  );
-  const clave = periodKey(anio, mes);
-  if (clave < claveActual) {
-    return {
-      importe,
-      fechaPagoISO: `${anio}-${pad2(mes)}-05`,
-      medioPago: 'transferencia',
-    };
-  }
-  if (clave === claveActual) {
-    const modo = index % 3;
-    if (modo === 0)
-      return { importe, fechaPagoISO: hoyISO(), medioPago: 'transferencia' };
-    if (modo === 1) {
-      return {
-        importe: Math.round(importe / 2),
-        fechaPagoISO: hoyISO(),
-        medioPago: 'efectivo',
-      };
-    }
-  }
-  return null;
-}
-
 export const cf_seedCuotas = onRequest(
   { cors: true, invoker: 'public' },
   async (req, res) => {
@@ -971,7 +937,6 @@ export const cf_seedCuotas = onRequest(
       }));
 
       let cuotasCreadas = 0;
-      let pagosCreados = 0;
 
       for (let index = 0; index < alumnos.length; index++) {
         const alumno = alumnos[index];
@@ -1041,52 +1006,25 @@ export const cf_seedCuotas = onRequest(
                   nivel,
                   importe: concepto.importe,
                   vencimientoISO,
+                  estado: 'pendiente',
                   createdAt: FieldValue.serverTimestamp(),
                 },
                 { merge: true }
               );
             cuotasCreadas++;
 
-            const pago = calcularPagoSeed(index, anio, mes, concepto.importe);
-            if (pago) {
-              await db
-                .collection('pagos')
-                .doc(`${cuotaId}_p1`)
-                .set(
-                  {
-                    cuotaId,
-                    studentId: alumno.id,
-                    parentUid: alumno.data.parentId || '',
-                    anio,
-                    mes,
-                    concepto: concepto.concepto,
-                    descripcion: concepto.descripcion,
-                    importe: pago.importe,
-                    fechaPagoISO: pago.fechaPagoISO,
-                    fechaPago: Timestamp.fromDate(
-                      new Date(`${pago.fechaPagoISO}T12:00:00.000Z`)
-                    ),
-                    medioPago: pago.medioPago,
-                    observacion: '',
-                    registradoPor: claims.uid,
-                    createdAt: FieldValue.serverTimestamp(),
-                  },
-                  { merge: true }
-                );
-              pagosCreados++;
-            }
+            await db.collection('pagos').doc(`${cuotaId}_p1`).delete();
           }
         }
       }
 
       res.status(201).send({
         message:
-          'Cuotas, deportes, recorridos y pagos de ejemplo generados con éxito.',
+          'Cuotas impagas, deportes y recorridos generados con éxito. Los tutores ya pueden subir sus comprobantes.',
         anio,
         mesHasta,
         alumnos: alumnos.length,
         cuotasCreadas,
-        pagosCreados,
       });
     } catch (error: any) {
       console.error('Error en cf_seedCuotas:', error);

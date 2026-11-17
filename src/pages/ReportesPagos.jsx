@@ -4,6 +4,22 @@ import Navbar from '../components/Navbar';
 import Icon from '../components/atoms/Icon';
 import { auth } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
+import { seedCuotas } from '../services/backendApi';
+
+const MESES = [
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
+];
 
 // Catálogo de reportes: debe coincidir con functions/src/pagos.ts (REPORT_TYPES).
 const REPORTES = [
@@ -23,6 +39,13 @@ const ESTADO_ESTILOS = {
   vencida: 'bg-red-100 text-red-700',
   parcial: 'bg-amber-100 text-amber-700',
   pendiente: 'bg-slate-100 text-slate-600',
+};
+
+const ESTADO_LABELS = {
+  pagada: 'Pagada',
+  vencida: 'Vencida',
+  parcial: 'Parcial',
+  pendiente: 'Impaga',
 };
 
 const MEDIO_ETIQUETA = {
@@ -66,6 +89,13 @@ const ReportesPagos = () => {
   const [enviando, setEnviando] = useState('');
   const [avisoExito, setAvisoExito] = useState('');
   const [avisoError, setAvisoError] = useState('');
+
+  const [showSeedCuotas, setShowSeedCuotas] = useState(false);
+  const [seedCuotasForm, setSeedCuotasForm] = useState({
+    anio: new Date().getFullYear(),
+    mesHasta: new Date().getMonth() + 1,
+  });
+  const [isSeedingCuotas, setIsSeedingCuotas] = useState(false);
 
   // Check Auth & Role on mount - Only user_admin allowed
   useEffect(() => {
@@ -194,6 +224,28 @@ const ReportesPagos = () => {
     }
   };
 
+  const handleSeedCuotas = async (e) => {
+    e.preventDefault();
+    setIsSeedingCuotas(true);
+    setAvisoExito('');
+    setAvisoError('');
+    try {
+      const data = await seedCuotas({
+        anio: Number(seedCuotasForm.anio),
+        mesHasta: Number(seedCuotasForm.mesHasta),
+      });
+      setAvisoExito(
+        `${data.message || 'Cuotas impagas generadas.'} ${data.cuotasCreadas || 0} cuotas creadas.`
+      );
+      setShowSeedCuotas(false);
+      fetchReporte();
+    } catch (err) {
+      setAvisoError(`Fallo al generar las cuotas: ${err.message}`);
+    } finally {
+      setIsSeedingCuotas(false);
+    }
+  };
+
   const renderResumen = () => {
     if (!reporte?.resumen) return null;
     const r = reporte.resumen;
@@ -305,7 +357,7 @@ const ReportesPagos = () => {
         ESTADO_ESTILOS[estado] || ESTADO_ESTILOS.pendiente
       }`}
     >
-      {estado ? estado.charAt(0).toUpperCase() + estado.slice(1) : '—'}
+      {ESTADO_LABELS[estado] || estado || '—'}
     </span>
   );
 
@@ -481,6 +533,24 @@ const ReportesPagos = () => {
           {user?.role === 'user_admin' && (
             <div className="flex flex-col sm:flex-row gap-3">
               <button
+                onClick={() => navigate('/pagos-pendientes')}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white hover:bg-slate-100 text-orange-700 font-bold text-sm border-2 border-orange-200 transition-all cursor-pointer"
+              >
+                <Icon name="pending_actions" className="text-lg" />
+                Pagos pendientes
+              </button>
+              <button
+                onClick={() => {
+                  setAvisoExito('');
+                  setAvisoError('');
+                  setShowSeedCuotas(true);
+                }}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white hover:bg-slate-100 text-slate-700 font-bold text-sm border-2 border-slate-200 transition-all cursor-pointer"
+              >
+                <Icon name="auto_awesome" className="text-lg" />
+                Generar cuotas
+              </button>
+              <button
                 onClick={() =>
                   handleEnviarRecordatorio(
                     'cf_enviarRecordatorioCuotas',
@@ -635,6 +705,99 @@ const ReportesPagos = () => {
           ) : null}
         </div>
       </main>
+
+      {showSeedCuotas && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-lg bg-white rounded-[2rem] border border-slate-200 shadow-2xl p-8 animate-scale-in text-left">
+            <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
+              <h3 className="font-headline text-2xl font-bold text-slate-800 flex items-center gap-2">
+                <Icon name="auto_awesome" className="text-orange-500" />
+                Generar cuotas de ejemplo
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowSeedCuotas(false)}
+                className="p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 cursor-pointer border-none"
+              >
+                <Icon name="close" className="text-lg" />
+              </button>
+            </div>
+            <form onSubmit={handleSeedCuotas} className="space-y-4 text-left">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-2">
+                  <label
+                    htmlFor="anioCuotas"
+                    className="text-xs font-bold text-slate-500 uppercase tracking-wider"
+                  >
+                    Año lectivo
+                  </label>
+                  <input
+                    id="anioCuotas"
+                    type="number"
+                    min="2000"
+                    max="2100"
+                    required
+                    value={seedCuotasForm.anio}
+                    onChange={(e) =>
+                      setSeedCuotasForm((prev) => ({
+                        ...prev,
+                        anio: e.target.value,
+                      }))
+                    }
+                    className="px-4 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl focus:bg-white focus:border-orange-500 focus:outline-none transition-all text-sm"
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label
+                    htmlFor="mesHastaCuotas"
+                    className="text-xs font-bold text-slate-500 uppercase tracking-wider"
+                  >
+                    Hasta el mes
+                  </label>
+                  <select
+                    id="mesHastaCuotas"
+                    value={seedCuotasForm.mesHasta}
+                    onChange={(e) =>
+                      setSeedCuotasForm((prev) => ({
+                        ...prev,
+                        mesHasta: e.target.value,
+                      }))
+                    }
+                    className="px-4 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl focus:bg-white focus:border-orange-500 focus:outline-none transition-all text-sm appearance-none"
+                  >
+                    {MESES.map((mes, index) => (
+                      <option key={mes} value={index + 1}>
+                        {mes}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <p className="text-xs text-slate-500">
+                Crea cuotas mensuales, de deporte y transporte impagas para
+                todos los estudiantes. Los tutores podrán subir el comprobante
+                desde su panel y el administrador deberá aprobarlo.
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSeedCuotas(false)}
+                  className="flex-1 py-3 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm transition-all cursor-pointer border-none"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSeedingCuotas}
+                  className="flex-1 py-3 rounded-full bg-orange-600 hover:bg-orange-700 text-white font-bold text-sm transition-all cursor-pointer border-none disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {isSeedingCuotas ? 'Generando...' : 'Generar cuotas'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

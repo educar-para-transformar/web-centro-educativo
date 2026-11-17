@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Icon from '../components/atoms/Icon';
 import EventCard from '../components/molecules/EventCard';
@@ -15,6 +15,10 @@ import {
   where,
 } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
+import {
+  resendActivationLink,
+  resetStudentPassword,
+} from '../services/backendApi';
 import '../styles/StudentPanel.css';
 
 const FUNCTIONS_BASE_URL =
@@ -129,7 +133,7 @@ const ESTADOS_CUOTA = {
     icon: 'pending_actions',
   },
   pendiente: {
-    label: 'Pendiente',
+    label: 'Impaga',
     badge: 'bg-slate-100 text-slate-600',
     icon: 'schedule',
   },
@@ -290,6 +294,7 @@ const adaptBoletin = (data) => {
 
 const ParentPanel = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, logout } = useAuth();
 
   const [activeTab, setActiveTab] = useState('boletin');
@@ -298,6 +303,7 @@ const ParentPanel = () => {
 
   const [hijos, setHijos] = useState([]);
   const [selectedHijoId, setSelectedHijoId] = useState(null);
+  const [enviandoCredencial, setEnviandoCredencial] = useState('');
   const [isLoadingHijos, setIsLoadingHijos] = useState(true);
   const [hijosError, setHijosError] = useState('');
 
@@ -352,6 +358,10 @@ const ParentPanel = () => {
   }, []);
 
   useEffect(() => {
+    if (searchParams.get('tab') === 'cuotas') setActiveTab('cuotas');
+  }, [searchParams]);
+
+  useEffect(() => {
     if (!user) {
       navigate('/login');
       return;
@@ -388,7 +398,7 @@ const ParentPanel = () => {
       setHijos(lista);
       if (lista.length > 0) {
         setSelectedHijoId(
-          (prev) => prev || lista[0].id || lista[0].studentID_login
+          (prev) => prev || lista[0].id || lista[0].studentID_login3
         );
       }
     } catch (err) {
@@ -756,6 +766,50 @@ const ParentPanel = () => {
       navigate('/login');
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleReenviarActivacion = async (hijo) => {
+    const hijoId = hijo.id || hijo.studentID_login;
+    if (!hijoId) return;
+    if (
+      !window.confirm(
+        `¿Reenviar el enlace de activación de ${hijo.nombre || 'tu hijo'}?`
+      )
+    ) {
+      return;
+    }
+    setEnviandoCredencial(hijoId);
+    try {
+      const data = await resendActivationLink('student', hijoId);
+      alert(data.message || 'Enlace de activación reenviado correctamente.');
+    } catch (err) {
+      alert(`Error al reenviar la activación: ${err.message}`);
+    } finally {
+      setEnviandoCredencial('');
+    }
+  };
+
+  const handleEnviarResetLink = async (hijo) => {
+    const hijoId = hijo.id || hijo.studentID_login;
+    if (!hijoId) return;
+    if (
+      !window.confirm(
+        `¿Enviar un enlace para restablecer la contraseña de ${hijo.nombre || 'tu hijo'}?`
+      )
+    ) {
+      return;
+    }
+    setEnviandoCredencial(hijoId);
+    try {
+      const data = await resetStudentPassword(hijoId);
+      alert(
+        data.message || 'Enlace de restablecimiento enviado correctamente.'
+      );
+    } catch (err) {
+      alert(`Error al enviar el enlace: ${err.message}`);
+    } finally {
+      setEnviandoCredencial('');
     }
   };
 
@@ -1374,6 +1428,9 @@ const ParentPanel = () => {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 text-center text-slate-500">
           <Icon name="payments" className="text-4xl mb-2" />
           <p>No hay cuotas registradas para este ciclo lectivo.</p>
+          <p className="text-sm mt-1">
+            Probá con otro ciclo o consultá a la administración.
+          </p>
         </div>
       );
     }
@@ -1672,6 +1729,14 @@ const ParentPanel = () => {
               </div>
             </div>
             <button
+              type="button"
+              onClick={() => setActiveTab('cuotas')}
+              className="px-4 py-2 rounded-full bg-orange-600 hover:bg-orange-700 text-white font-bold transition-colors flex items-center gap-2"
+            >
+              <Icon name="upload_file" className="text-base" />
+              Subir comprobante
+            </button>
+            <button
               onClick={handleLogout}
               className="px-4 py-2 rounded-full bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
             >
@@ -1750,6 +1815,26 @@ const ParentPanel = () => {
                   <span>Curso: {hijoSeleccionado.curso}</span>
                 </div>
               )}
+              <div className="flex flex-wrap gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => handleReenviarActivacion(hijoSeleccionado)}
+                  disabled={enviandoCredencial !== ''}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold border border-orange-200 transition-colors cursor-pointer disabled:opacity-60"
+                >
+                  <Icon name="mail" className="text-sm" />
+                  Reenviar activación
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleEnviarResetLink(hijoSeleccionado)}
+                  disabled={enviandoCredencial !== ''}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 transition-colors cursor-pointer disabled:opacity-60"
+                >
+                  <Icon name="lock_reset" className="text-sm" />
+                  Enviar enlace de clave
+                </button>
+              </div>
             </div>
           )}
         </section>
