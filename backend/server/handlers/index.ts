@@ -15,6 +15,8 @@ const APP_BASE_URL = (
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 const ATTENDANCE_STATES = ['presente', 'ausente', 'tarde', 'justificada'];
 const MATERIAL_TYPES = ['pdf', 'link', 'video', 'documento', 'imagen'];
+const MAX_FILE_BYTES = 700 * 1024;
+const ENROLLMENT_STATUSES = ['pendiente', 'aceptado', 'rechazado'];
 
 class HttpError extends Error {
   status: number;
@@ -150,6 +152,205 @@ async function generateUniqueStudentIdLogin(): Promise<string> {
   return studentID;
 }
 
+/** Quita el prefijo data:<mime>;base64, si viene incluido. */
+function limpiarBase64(value: unknown) {
+  return String(value || '')
+    .replace(/^data:[^;]+;base64,/, '')
+    .trim();
+}
+
+/**
+ * Valida el archivo recibido en base64 y devuelve su contenido normalizado.
+ * Firestore limita cada documento a 1 MiB, por eso se aceptan hasta 700 KB.
+ */
+function parseArchivoPayload(body: any) {
+  const base64 = limpiarBase64(body?.archivoBase64);
+  if (!base64) return null;
+
+  if (!/^[A-Za-z0-9+/=\s]+$/.test(base64)) {
+    throw new HttpError(400, 'El archivo adjunto no es un base64 válido.');
+  }
+
+  const compacto = base64.replace(/\s+/g, '');
+  const tamano = Math.floor((compacto.length * 3) / 4);
+  if (tamano <= 0 || tamano > MAX_FILE_BYTES) {
+    throw new HttpError(
+      400,
+      'El archivo supera el tamaño máximo permitido de 700 KB.'
+    );
+  }
+
+  return {
+    base64: compacto,
+    nombre: String(body?.archivoNombre || 'archivo')
+      .trim()
+      .slice(0, 200),
+    mimeType: String(body?.archivoMime || 'application/octet-stream')
+      .trim()
+      .slice(0, 120),
+    tamano,
+  };
+}
+
+/**
+ * Crea el usuario del tutor y sus alumnos. Se reutiliza tanto en el alta
+ * manual del panel administrador como al aceptar una solicitud de inscripción.
+ */
+async function crearPadreYAlumnos(input: {
+  parentEmail: string;
+  parentName: string;
+  parentDni: string;
+  students: any[];
+}) {
+  const parentEmail = String(input.parentEmail || '')
+    .trim()
+    .toLowerCase();
+  const parentName = String(input.parentName || '').trim();
+  const parentDni = String(input.parentDni || '').trim();
+  const students = Array.isArray(input.students) ? input.students : [];
+
+  if (!parentEmail || !parentName || !parentDni) {
+    throw new HttpError(400, 'Faltan datos del tutor (nombre, email o DNI).');
+  }
+
+  const alumnosValidos = students.filter(
+    (student) => student?.nombre && student?.dni
+  );
+  if (alumnosValidos.length === 0) {
+    throw new HttpError(400, 'La solicitud no tiene alumnos válidos.');
+  }
+
+  try {
+    await auth.getUserByEmail(parentEmail);
+    throw new HttpError(
+      409,
+      'Ya existe una cuenta registrada con el correo del tutor.'
+    );
+  } catch (error: any) {
+    if (error instanceof HttpError) throw error;
+    if (error?.code !== 'auth/user-not-found') {
+      throw error;
+    }
+  }
+
+  const parentUser = await auth.createUser({
+    email: parentEmail,
+    emailVerified: true,
+    password: parentDni,
+  });
+
+  await auth.setCustomUserClaims(parentUser.uid, { role: 'Padre' });
+
+  const studentDocIds: string[] = [];
+  const createdStudentsInfo: Array<{
+    id: string;
+    studentID_login: string;
+    nombre: string;
+  }> = [];
+
+  for (const student of alumnosValidos) {
+    const studentID_login = await generateUniqueStudentIdLogin();
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(String(student.dni).trim(), salt);
+
+    const studentRef = await db.collection('students').add({
+      studentID_login,
+      parentId: parentUser.uid,
+      emailPadre: parentEmail,
+      hashedPassword,
+      status: 'active',
+      mustChangePassword: true,
+      nombre: String(student.nombre || '').trim(),
+      dni: String(student.dni || '').trim(),
+      genero: String(student.genero || '').trim(),
+      fechaNacimiento: String(student.fechaNacimiento || '').trim(),
+      nivel: ['inicial', 'primaria', 'secundaria'].includes(student.nivel)
+        ? student.nivel
+        : 'inicial',
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    studentDocIds.push(studentRef.id);
+    createdStudentsInfo.push({
+      id: studentRef.id,
+      studentID_login,
+      nombre: String(student.nombre || '').trim(),
+    });
+  }
+
+  await db.collection('users').doc(parentUser.uid).set({
+    role: 'Padre',
+    email: parentEmail,
+    nombre: parentName,
+    dni: parentDni,
+    mustChangePassword: true,
+    emailInvalid: false,
+    studentIds: studentDocIds,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  return {
+    parentUid: parentUser.uid,
+    students: createdStudentsInfo,
+  };
+}
+
+/** Envía al tutor el enlace de verificación y las activaciones de sus hijos. */
+async function enviarCorreoAltaTutor(input: {
+  parentUid: string;
+  parentEmail: string;
+  parentName: string;
+  students: Array<{ id: string; studentID_login: string; nombre: string }>;
+}) {
+  try {
+    const redirectUrl =
+      process.env.REDIRECT_URL || 'http://localhost:5173/auth-action';
+    const actionCodeSettings = {
+      url: redirectUrl,
+      handleCodeInApp: true,
+    };
+
+    const parentLink = await auth.generateEmailVerificationLink(
+      input.parentEmail,
+      actionCodeSettings
+    );
+
+    const activaciones: string[] = [];
+    for (const student of input.students) {
+      const activationToken = crypto.randomBytes(32).toString('hex');
+      await db
+        .collection('students')
+        .doc(student.id)
+        .update({
+          activationToken,
+          activationTokenExpires: Timestamp.fromDate(
+            new Date(Date.now() + 48 * 60 * 60 * 1000)
+          ),
+        });
+      const link = `${redirectUrl}?mode=activateStudent&token=${activationToken}&studentId=${student.id}`;
+      activaciones.push(
+        `<li><strong>${student.nombre}</strong> (usuario: ${student.studentID_login}) — <a href="${link}">Establecer contraseña</a></li>`
+      );
+    }
+
+    await sendEmail({
+      to: input.parentEmail,
+      subject: 'Bienvenido/a a Educar para Transformar',
+      html: `
+        <h1>¡Bienvenido/a a la comunidad educativa!</h1>
+        <p>Hola ${input.parentName || 'Tutor'},</p>
+        <p>Su cuenta fue creada correctamente. Puede verificar su correo desde el siguiente enlace:</p>
+        <p><a href="${parentLink}">Verificar correo del tutor</a></p>
+        <p>Las cuentas de sus hijos ya están disponibles:</p>
+        <ul>${activaciones.join('')}</ul>
+        <p>La contraseña inicial del tutor es su DNI. Por seguridad, el sistema le pedirá cambiarla al ingresar.</p>
+      `,
+    });
+  } catch (error) {
+    console.error('No se pudo enviar el correo de alta de tutor:', error);
+  }
+}
+
 /**
  * 1. cf_createParentAndStudents
  * Invocada por un user_admin para crear un padre y sus hijos.
@@ -182,72 +383,14 @@ export const cf_createParentAndStudents = onRequest(
         return;
       }
 
-      // Crear usuario del Padre en Auth usando su DNI como contraseña inicial
-      const parentUser = await auth.createUser({
-        email: parentEmail,
-        emailVerified: true,
-        password: parentDni.trim(),
+      const creado = await crearPadreYAlumnos({
+        parentEmail,
+        parentName,
+        parentDni,
+        students,
       });
 
-      // Establecer Custom Claim para el Padre
-      await auth.setCustomUserClaims(parentUser.uid, { role: 'Padre' });
-
-      const studentDocIds: string[] = [];
-      const createdStudentsInfo = [];
-
-      // Procesar cada estudiante
-      for (const student of students) {
-        if (!student.nombre || !student.dni) {
-          continue;
-        }
-        const studentID_login = await generateUniqueStudentIdLogin();
-
-        // Hashear el DNI del alumno como su contraseña por defecto
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(student.dni.trim(), salt);
-
-        const studentRef = await db.collection('students').add({
-          studentID_login,
-          parentId: parentUser.uid,
-          emailPadre: parentEmail,
-          hashedPassword,
-          status: 'active',
-          mustChangePassword: true,
-          nombre: student.nombre || '',
-          dni: student.dni || '',
-          genero: student.genero || '',
-          fechaNacimiento: student.fechaNacimiento || '',
-          nivel: student.nivel || 'inicial',
-          createdAt: FieldValue.serverTimestamp(),
-        });
-
-        studentDocIds.push(studentRef.id);
-        createdStudentsInfo.push({
-          id: studentRef.id,
-          studentID_login,
-          nombre: student.nombre,
-        });
-      }
-
-      // Guardar los datos del Padre en Firestore
-      await db
-        .collection('users')
-        .doc(parentUser.uid)
-        .set({
-          role: 'Padre',
-          email: parentEmail,
-          nombre: parentName || '',
-          dni: parentDni.trim(),
-          mustChangePassword: true,
-          emailInvalid: false,
-          studentIds: studentDocIds,
-          createdAt: FieldValue.serverTimestamp(),
-        });
-
-      res.status(201).send({
-        parentUid: parentUser.uid,
-        students: createdStudentsInfo,
-      });
+      res.status(201).send(creado);
     } catch (error: any) {
       console.error('Error en cf_createParentAndStudents:', error);
       sendFunctionError(res, error);
@@ -2320,6 +2463,10 @@ export const cf_getStudentMaterials = onRequest(
             descripcion: data.descripcion || '',
             tipo: data.tipo || 'link',
             url: data.url || '',
+            archivoDisponible: Boolean(data.archivoDisponible),
+            archivoNombre: data.archivoNombre || '',
+            archivoMime: data.archivoMime || '',
+            archivoTamano: Number(data.archivoTamano) || 0,
             anio: Number(data.anio) || null,
             createdAt: createdAt ? createdAt.toDate().toISOString() : null,
             profesorNombre: data.profesorNombre || '',
@@ -2504,9 +2651,11 @@ export const cf_upsertMaterial = onRequest(
 
       const { id, materiaId, titulo, descripcion, tipo, url, anio } =
         req.body || {};
-      if (!materiaId || !titulo || !url) {
+      const archivo = parseArchivoPayload(req.body);
+      if (!materiaId || !titulo || (!url && !archivo)) {
         res.status(400).send({
-          error: 'Faltan parámetros requeridos (materiaId, titulo, url).',
+          error:
+            'Faltan parámetros requeridos (materiaId, titulo y url o archivo).',
         });
         return;
       }
@@ -2578,15 +2727,34 @@ export const cf_upsertMaterial = onRequest(
           titulo: String(titulo).trim(),
           descripcion: String(descripcion || '').trim(),
           tipo: tipoFinal,
-          url: String(url).trim(),
+          url: String(url || '').trim(),
           anio: anioLectivo,
           profesorNombre: materiaData.profesorNombre || '',
           publicadoPor: callerClaims.uid,
           updatedAt: FieldValue.serverTimestamp(),
+          ...(archivo
+            ? {
+                archivoDisponible: true,
+                archivoNombre: archivo.nombre,
+                archivoMime: archivo.mimeType,
+                archivoTamano: archivo.tamano,
+              }
+            : {}),
           ...(esNuevo ? { createdAt: FieldValue.serverTimestamp() } : {}),
         },
         { merge: true }
       );
+
+      if (archivo) {
+        await db.collection('materialFiles').doc(ref.id).set({
+          materialId: ref.id,
+          data: archivo.base64,
+          nombre: archivo.nombre,
+          mimeType: archivo.mimeType,
+          tamano: archivo.tamano,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
 
       res
         .status(esNuevo ? 201 : 200)
@@ -2642,6 +2810,11 @@ export const cf_deleteMaterial = onRequest(
       }
 
       await materialRef.delete();
+      await db
+        .collection('materialFiles')
+        .doc(String(materialId))
+        .delete()
+        .catch(() => undefined);
       res.status(200).send({ message: 'Material eliminado correctamente.' });
     } catch (error: any) {
       console.error('Error en cf_deleteMaterial:', error);
@@ -2808,6 +2981,518 @@ export const cf_deleteSchedule = onRequest(
         .send({ message: 'Bloque horario eliminado correctamente.' });
     } catch (error: any) {
       console.error('Error en cf_deleteSchedule:', error);
+      sendFunctionError(res, error);
+    }
+  }
+);
+
+/**
+ * 29. cf_getMateriaMaterials
+ * Lista los materiales de una materia para el docente que la dicta.
+ */
+export const cf_getMateriaMaterials = onRequest(
+  { cors: true, invoker: 'public' },
+  async (req, res) => {
+    try {
+      const callerClaims = await verifyAuth(req);
+      if (callerClaims.role !== 'Staff' && callerClaims.role !== 'user_admin') {
+        res.status(403).send({ error: 'Permisos insuficientes.' });
+        return;
+      }
+
+      const materiaId = String(req.query.materiaId || '');
+      if (!materiaId) {
+        res.status(400).send({ error: 'Falta el ID de la materia.' });
+        return;
+      }
+
+      const materiaDoc = await db.collection('materias').doc(materiaId).get();
+      if (!materiaDoc.exists) {
+        res.status(404).send({ error: 'La materia no existe.' });
+        return;
+      }
+      if (
+        callerClaims.role === 'Staff' &&
+        materiaDoc.data()?.profesorUid !== callerClaims.uid
+      ) {
+        res
+          .status(403)
+          .send({ error: 'No tenés permiso para ver esta materia.' });
+        return;
+      }
+
+      const snapshot = await db
+        .collection('materiales')
+        .where('materiaId', '==', materiaId)
+        .get();
+
+      const materiales = snapshot.docs
+        .map((doc) => {
+          const data = doc.data() || {};
+          const createdAt = data.createdAt as Timestamp | undefined;
+          return {
+            id: doc.id,
+            materiaId: data.materiaId || '',
+            titulo: data.titulo || '',
+            descripcion: data.descripcion || '',
+            tipo: data.tipo || 'link',
+            url: data.url || '',
+            archivoDisponible: Boolean(data.archivoDisponible),
+            archivoNombre: data.archivoNombre || '',
+            archivoMime: data.archivoMime || '',
+            archivoTamano: Number(data.archivoTamano) || 0,
+            anio: Number(data.anio) || null,
+            createdAt: createdAt ? createdAt.toDate().toISOString() : null,
+            _orden: createdAt ? createdAt.toMillis() : 0,
+          };
+        })
+        .sort((a, b) => b._orden - a._orden)
+        .map(({ _orden, ...item }) => item);
+
+      res.status(200).send({ materiaId, materiales });
+    } catch (error: any) {
+      console.error('Error en cf_getMateriaMaterials:', error);
+      sendFunctionError(res, error);
+    }
+  }
+);
+
+/**
+ * 30. cf_getMaterialFile
+ * Descarga el archivo base64 de un material validando el acceso del usuario.
+ */
+export const cf_getMaterialFile = onRequest(
+  { cors: true, invoker: 'public' },
+  async (req, res) => {
+    try {
+      const callerClaims = await verifyAuth(req);
+      if (
+        !['Estudiante', 'Padre', 'Staff', 'user_admin'].includes(
+          callerClaims.role
+        )
+      ) {
+        res.status(403).send({ error: 'Permisos insuficientes.' });
+        return;
+      }
+
+      const materialId = String(
+        req.query.materialId || req.body?.materialId || ''
+      );
+      if (!materialId) {
+        res.status(400).send({ error: 'Falta el ID del material.' });
+        return;
+      }
+
+      const materialDoc = await db
+        .collection('materiales')
+        .doc(materialId)
+        .get();
+      if (!materialDoc.exists) {
+        res.status(404).send({ error: 'El material no existe.' });
+        return;
+      }
+      const materialData = materialDoc.data() || {};
+      const materiaId = String(materialData.materiaId || '');
+      const materiaDoc = materiaId
+        ? await db.collection('materias').doc(materiaId).get()
+        : null;
+      const studentIds = Array.isArray(materiaDoc?.data()?.studentIds)
+        ? (materiaDoc!.data()!.studentIds as string[])
+        : [];
+
+      if (callerClaims.role === 'Staff') {
+        if (materiaDoc?.data()?.profesorUid !== callerClaims.uid) {
+          res.status(403).send({ error: 'Permisos insuficientes.' });
+          return;
+        }
+      } else if (callerClaims.role === 'Estudiante') {
+        if (!studentIds.includes(callerClaims.uid)) {
+          res.status(403).send({ error: 'Permisos insuficientes.' });
+          return;
+        }
+      } else if (callerClaims.role === 'Padre') {
+        const studentId = String(req.query.studentId || '');
+        if (!studentId || !studentIds.includes(studentId)) {
+          res.status(403).send({ error: 'Permisos insuficientes.' });
+          return;
+        }
+        const studentDoc = await db.collection('students').doc(studentId).get();
+        if (studentDoc.data()?.parentId !== callerClaims.uid) {
+          res.status(403).send({ error: 'Permisos insuficientes.' });
+          return;
+        }
+      }
+
+      const fileDoc = await db
+        .collection('materialFiles')
+        .doc(materialId)
+        .get();
+      if (!fileDoc.exists) {
+        res
+          .status(404)
+          .send({ error: 'Este material no tiene archivo adjunto.' });
+        return;
+      }
+      const fileData = fileDoc.data() || {};
+
+      res.status(200).send({
+        materialId,
+        nombre: fileData.nombre || materialData.archivoNombre || 'archivo',
+        mimeType:
+          fileData.mimeType ||
+          materialData.archivoMime ||
+          'application/octet-stream',
+        tamano: Number(fileData.tamano) || 0,
+        base64: fileData.data || '',
+      });
+    } catch (error: any) {
+      console.error('Error en cf_getMaterialFile:', error);
+      sendFunctionError(res, error);
+    }
+  }
+);
+
+/**
+ * 31. cf_getMateriaAttendance
+ * Devuelve las asistencias de una materia para una fecha concreta.
+ */
+export const cf_getMateriaAttendance = onRequest(
+  { cors: true, invoker: 'public' },
+  async (req, res) => {
+    try {
+      const callerClaims = await verifyAuth(req);
+      if (callerClaims.role !== 'Staff' && callerClaims.role !== 'user_admin') {
+        res.status(403).send({ error: 'Permisos insuficientes.' });
+        return;
+      }
+
+      const materiaId = String(req.query.materiaId || '');
+      const fecha = String(req.query.fecha || '');
+      if (!materiaId || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+        res.status(400).send({
+          error: 'Faltan parámetros válidos (materiaId, fecha YYYY-MM-DD).',
+        });
+        return;
+      }
+
+      const materiaDoc = await db.collection('materias').doc(materiaId).get();
+      if (!materiaDoc.exists) {
+        res.status(404).send({ error: 'La materia no existe.' });
+        return;
+      }
+      if (
+        callerClaims.role === 'Staff' &&
+        materiaDoc.data()?.profesorUid !== callerClaims.uid
+      ) {
+        res
+          .status(403)
+          .send({ error: 'No tenés permiso para ver esta materia.' });
+        return;
+      }
+
+      const studentIds = Array.isArray(materiaDoc.data()?.studentIds)
+        ? (materiaDoc.data()!.studentIds as string[])
+        : [];
+      const refs = studentIds.map((studentId) =>
+        db.collection('asistencias').doc(`${materiaId}_${fecha}_${studentId}`)
+      );
+      const docs = refs.length > 0 ? await db.getAll(...refs) : [];
+
+      const registros = docs
+        .filter((doc) => doc.exists)
+        .map((doc) => {
+          const data = doc.data() || {};
+          return {
+            studentId: data.studentId || '',
+            estado: data.estado || '',
+            observacion: data.observacion || '',
+          };
+        });
+
+      res.status(200).send({ materiaId, fecha, registros });
+    } catch (error: any) {
+      console.error('Error en cf_getMateriaAttendance:', error);
+      sendFunctionError(res, error);
+    }
+  }
+);
+
+/**
+ * 32. cf_createEnrollmentRequest
+ * Recibe una solicitud pública de inscripción y la deja pendiente de revisión.
+ */
+export const cf_createEnrollmentRequest = onRequest(
+  { cors: true, invoker: 'public' },
+  async (req, res) => {
+    try {
+      const {
+        parentName,
+        parentEmail,
+        parentDni,
+        telefono,
+        observaciones,
+        nivel,
+        nombreAlumno,
+        dniAlumno,
+        fechaNacimiento,
+        genero,
+      } = req.body || {};
+
+      const email = String(parentEmail || '')
+        .trim()
+        .toLowerCase();
+      const nombre = String(parentName || '').trim();
+      const dni = String(parentDni || '').replace(/\D/g, '');
+      const nombreEstudiante = String(nombreAlumno || '').trim();
+      const dniEstudiante = String(dniAlumno || '').replace(/\D/g, '');
+      const nivelFinal = String(nivel || '').trim();
+
+      if (!nombre || !email || !dni || !nombreEstudiante || !dniEstudiante) {
+        res.status(400).send({
+          error:
+            'Faltan datos obligatorios del tutor o del alumno para la inscripción.',
+        });
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        res.status(400).send({ error: 'El correo del tutor no es válido.' });
+        return;
+      }
+      if (
+        dni.length < 7 ||
+        dni.length > 9 ||
+        dniEstudiante.length < 7 ||
+        dniEstudiante.length > 9
+      ) {
+        res
+          .status(400)
+          .send({ error: 'Los DNI deben tener entre 7 y 9 dígitos.' });
+        return;
+      }
+      if (!['inicial', 'primaria', 'secundaria'].includes(nivelFinal)) {
+        res.status(400).send({ error: 'El nivel educativo es inválido.' });
+        return;
+      }
+
+      const existentes = await db
+        .collection('solicitudesInscripcion')
+        .where('parentEmail', '==', email)
+        .get();
+      if (
+        existentes.docs.some(
+          (doc) => (doc.data()?.status || 'pendiente') === 'pendiente'
+        )
+      ) {
+        res.status(409).send({
+          error:
+            'Ya existe una solicitud pendiente con este correo. Aguardá la respuesta del colegio.',
+        });
+        return;
+      }
+
+      const ref = await db.collection('solicitudesInscripcion').add({
+        parentName: nombre,
+        parentEmail: email,
+        parentDni: dni,
+        telefono: String(telefono || '')
+          .trim()
+          .slice(0, 40),
+        observaciones: String(observaciones || '')
+          .trim()
+          .slice(0, 1000),
+        students: [
+          {
+            nombre: nombreEstudiante,
+            dni: dniEstudiante,
+            fechaNacimiento: String(fechaNacimiento || '').trim(),
+            genero: String(genero || '').trim(),
+            nivel: nivelFinal,
+          },
+        ],
+        status: 'pendiente',
+        createdAt: FieldValue.serverTimestamp(),
+      });
+
+      res.status(201).send({
+        id: ref.id,
+        message:
+          'Solicitud de inscripción recibida. El colegio se comunicará con vos.',
+      });
+    } catch (error: any) {
+      console.error('Error en cf_createEnrollmentRequest:', error);
+      sendFunctionError(res, error);
+    }
+  }
+);
+
+function fechaISO(value: any): string | null {
+  if (!value) return null;
+  if (typeof value?.toDate === 'function') return value.toDate().toISOString();
+  if (value instanceof Date) return value.toISOString();
+  return typeof value === 'string' ? value : null;
+}
+
+function serializarSolicitud(id: string, data: any) {
+  return {
+    id,
+    parentName: data.parentName || '',
+    parentEmail: data.parentEmail || '',
+    parentDni: data.parentDni || '',
+    telefono: data.telefono || '',
+    observaciones: data.observaciones || '',
+    students: Array.isArray(data.students) ? data.students : [],
+    status: data.status || 'pendiente',
+    motivoRechazo: data.motivoRechazo || '',
+    parentUid: data.parentUid || null,
+    studentIds: Array.isArray(data.studentIds) ? data.studentIds : [],
+    createdAt: fechaISO(data.createdAt),
+    reviewedAt: fechaISO(data.reviewedAt),
+    reviewedBy: data.reviewedBy || null,
+  };
+}
+
+/**
+ * 33. cf_getEnrollmentRequests
+ * Lista las solicitudes de inscripción (solo user_admin).
+ */
+export const cf_getEnrollmentRequests = onRequest(
+  { cors: true, invoker: 'public' },
+  async (req, res) => {
+    try {
+      const callerClaims = await verifyAuth(req);
+      if (callerClaims.role !== 'user_admin') {
+        res
+          .status(403)
+          .send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+        return;
+      }
+
+      const estado = String(req.query.estado || '').toLowerCase();
+      const snapshot = await db.collection('solicitudesInscripcion').get();
+      const solicitudes = snapshot.docs
+        .map((doc) => serializarSolicitud(doc.id, doc.data() || {}))
+        .filter(
+          (item) =>
+            !ENROLLMENT_STATUSES.includes(estado) || item.status === estado
+        )
+        .sort((a, b) =>
+          String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+        );
+
+      res.status(200).send({ solicitudes });
+    } catch (error: any) {
+      console.error('Error en cf_getEnrollmentRequests:', error);
+      sendFunctionError(res, error);
+    }
+  }
+);
+
+/**
+ * 34. cf_updateEnrollmentRequest
+ * Acepta o rechaza una solicitud. Al aceptar crea tutor y alumnos.
+ */
+export const cf_updateEnrollmentRequest = onRequest(
+  { cors: true, invoker: 'public' },
+  async (req, res) => {
+    try {
+      const callerClaims = await verifyAuth(req);
+      if (callerClaims.role !== 'user_admin') {
+        res
+          .status(403)
+          .send({ error: 'Permisos insuficientes: Requiere rol user_admin.' });
+        return;
+      }
+
+      const requestId = String(req.body?.requestId || '');
+      const action = String(req.body?.action || '').toLowerCase();
+      const motivo = String(req.body?.motivo || '')
+        .trim()
+        .slice(0, 500);
+      if (!requestId || !['aceptar', 'rechazar'].includes(action)) {
+        res.status(400).send({
+          error: 'Faltan parámetros válidos (requestId, action).',
+        });
+        return;
+      }
+
+      const ref = db.collection('solicitudesInscripcion').doc(requestId);
+      const doc = await ref.get();
+      if (!doc.exists) {
+        res.status(404).send({ error: 'La solicitud no existe.' });
+        return;
+      }
+      const data = doc.data() || {};
+      if ((data.status || 'pendiente') !== 'pendiente') {
+        res.status(409).send({
+          error: 'La solicitud ya fue revisada anteriormente.',
+        });
+        return;
+      }
+
+      if (action === 'rechazar') {
+        await ref.update({
+          status: 'rechazado',
+          motivoRechazo: motivo,
+          reviewedAt: FieldValue.serverTimestamp(),
+          reviewedBy: callerClaims.uid,
+        });
+
+        try {
+          await sendEmail({
+            to: data.parentEmail,
+            subject: 'Solicitud de inscripción - Educar para Transformar',
+            html: `
+              <h1>Solicitud de inscripción revisada</h1>
+              <p>Hola ${data.parentName || 'Tutor'},</p>
+              <p>Lamentamos informarle que su solicitud de inscripción no pudo ser aprobada.</p>
+              ${motivo ? `<p><strong>Motivo:</strong> ${motivo}</p>` : ''}
+              <p>Puede comunicarse con la institución para más información.</p>
+            `,
+          });
+        } catch (error) {
+          console.error('No se pudo enviar el correo de rechazo:', error);
+        }
+
+        res.status(200).send({
+          id: requestId,
+          status: 'rechazado',
+          message: 'Solicitud rechazada.',
+        });
+        return;
+      }
+
+      const creado = await crearPadreYAlumnos({
+        parentEmail: data.parentEmail,
+        parentName: data.parentName,
+        parentDni: data.parentDni,
+        students: data.students,
+      });
+
+      await ref.update({
+        status: 'aceptado',
+        parentUid: creado.parentUid,
+        studentIds: creado.students.map((student) => student.id),
+        reviewedAt: FieldValue.serverTimestamp(),
+        reviewedBy: callerClaims.uid,
+      });
+
+      await enviarCorreoAltaTutor({
+        parentUid: creado.parentUid,
+        parentEmail: data.parentEmail,
+        parentName: data.parentName,
+        students: creado.students,
+      });
+
+      res.status(200).send({
+        id: requestId,
+        status: 'aceptado',
+        parentUid: creado.parentUid,
+        students: creado.students,
+        message:
+          'Solicitud aceptada. Se creó la cuenta del tutor y de sus hijos.',
+      });
+    } catch (error: any) {
+      console.error('Error en cf_updateEnrollmentRequest:', error);
       sendFunctionError(res, error);
     }
   }

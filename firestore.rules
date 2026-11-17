@@ -149,6 +149,21 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Archivos base64 de materiales (acceso exclusivo desde Cloud Functions).
+    match /materialFiles/{materialId} {
+      allow read, write: if false;
+    }
+
+    // Comprobantes base64 de pagos (acceso exclusivo desde Cloud Functions).
+    match /pagosComprobantes/{pagoId} {
+      allow read, write: if false;
+    }
+
+    // Solicitudes públicas de inscripción (acceso exclusivo desde Cloud Functions).
+    match /solicitudesInscripcion/{solicitudId} {
+      allow read, write: if false;
+    }
+
     // Colección news (Noticias del portal)
     match /news/{newsId} {
       // Las noticias son públicas para que cualquier visitante del sitio pueda leerlas

@@ -106,6 +106,23 @@ const MATERIAL_TIPOS = {
 
 const currentYear = new Date().getFullYear();
 
+const descargarBase64 = ({ base64, nombre, mimeType }) => {
+  const binario = atob(base64);
+  const bytes = new Uint8Array(binario.length);
+  for (let i = 0; i < binario.length; i += 1) bytes[i] = binario.charCodeAt(i);
+  const blob = new Blob([bytes], {
+    type: mimeType || 'application/octet-stream',
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = nombre || 'archivo';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+
 const fetchStudentData = async (endpoint) => {
   const idToken = await auth.currentUser?.getIdToken(true);
   if (!idToken)
@@ -206,6 +223,7 @@ const StudentPanel = () => {
   const [materiales, setMateriales] = useState([]);
   const [isLoadingMateriales, setIsLoadingMateriales] = useState(true);
   const [materialesError, setMaterialesError] = useState('');
+  const [materialDownloading, setMaterialDownloading] = useState('');
 
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
@@ -394,6 +412,31 @@ const StudentPanel = () => {
       setIsLoadingMateriales(false);
     }
   }, [user, selectedAnio]);
+
+  const handleDescargarMaterial = async (material) => {
+    if (!material.archivoDisponible) return;
+    setMaterialDownloading(material.id);
+    setMaterialesError('');
+    try {
+      const idToken = await auth.currentUser?.getIdToken(true);
+      if (!idToken) throw new Error('La sesión no es válida.');
+      const params = new URLSearchParams({ materialId: material.id });
+      const response = await fetch(
+        `${FUNCTIONS_BASE_URL}/cf_getMaterialFile?${params.toString()}`,
+        { headers: { Authorization: `Bearer ${idToken}` } }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo descargar el archivo.');
+      }
+      descargarBase64(data);
+    } catch (err) {
+      console.error('Error descargando material:', err);
+      setMaterialesError(err.message || 'No se pudo descargar el archivo.');
+    } finally {
+      setMaterialDownloading('');
+    }
+  };
 
   useEffect(() => {
     fetchBoletin();
@@ -1425,7 +1468,19 @@ const StudentPanel = () => {
                   <p className="text-[11px] text-slate-400 truncate">
                     {material.profesorNombre || 'Material del curso'}
                   </p>
-                  {material.url ? (
+                  {material.archivoDisponible ? (
+                    <button
+                      type="button"
+                      onClick={() => handleDescargarMaterial(material)}
+                      disabled={materialDownloading === material.id}
+                      className="shrink-0 inline-flex items-center gap-1 px-3 py-2 rounded-full bg-orange-100 hover:bg-orange-200 text-orange-700 font-bold text-xs transition-colors border-none cursor-pointer disabled:opacity-60"
+                    >
+                      <Icon name="download" className="text-sm" />
+                      {materialDownloading === material.id
+                        ? 'Descargando...'
+                        : 'Descargar'}
+                    </button>
+                  ) : material.url ? (
                     <a
                       href={material.url}
                       target="_blank"
@@ -1437,7 +1492,7 @@ const StudentPanel = () => {
                     </a>
                   ) : (
                     <span className="shrink-0 px-3 py-2 rounded-full bg-slate-100 text-slate-400 font-bold text-xs">
-                      Sin enlace
+                      Sin archivo
                     </span>
                   )}
                 </div>

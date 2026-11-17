@@ -34,6 +34,8 @@ const REPORT_TYPES: readonly string[] = [
 ];
 const DIA_VENCIMIENTO = 10;
 const AR_OFFSET_MS = 3 * 60 * 60 * 1000; // Argentina (UTC-3)
+const MAX_FILE_BYTES = 700 * 1024;
+const PAYMENT_STATES = ['pendiente', 'aprobado', 'rechazado'];
 
 type EstadoCuota = 'pagada' | 'parcial' | 'pendiente' | 'vencida';
 
@@ -45,6 +47,12 @@ interface PagoItem {
   medioPago: string;
   observacion: string;
   registradoPor: string | null;
+  estado: 'pendiente' | 'aprobado' | 'rechazado';
+  comprobanteDisponible: boolean;
+  comprobanteNombre: string;
+  motivoRechazo: string;
+  revisadoPor: string | null;
+  revisadoAt: string | null;
 }
 
 interface CuotaConPagos {
@@ -64,6 +72,8 @@ interface CuotaConPagos {
   nivel: string;
   importe: number;
   pagado: number;
+  pendienteRevision: number;
+  pagosPendientes: number;
   saldo: number;
   estado: EstadoCuota;
   vencimientoISO: string;
@@ -206,6 +216,47 @@ function parseFechaISO(value: unknown): string | null {
   return text;
 }
 
+function fechaISO(value: any): string | null {
+  if (!value) return null;
+  if (typeof value?.toDate === 'function') return value.toDate().toISOString();
+  if (value instanceof Date) return value.toISOString();
+  return typeof value === 'string' ? value : null;
+}
+
+function limpiarBase64(value: unknown) {
+  return String(value || '')
+    .replace(/^data:[^;]+;base64,/, '')
+    .trim();
+}
+
+function parseComprobante(body: any) {
+  const base64 = limpiarBase64(body?.comprobanteBase64);
+  if (!base64) {
+    throw new HttpError(400, 'El comprobante de pago es obligatorio.');
+  }
+  if (!/^[A-Za-z0-9+/=\s]+$/.test(base64)) {
+    throw new HttpError(400, 'El comprobante adjunto no es un base64 válido.');
+  }
+  const compacto = base64.replace(/\s+/g, '');
+  const tamano = Math.floor((compacto.length * 3) / 4);
+  if (tamano <= 0 || tamano > MAX_FILE_BYTES) {
+    throw new HttpError(
+      400,
+      'El comprobante supera el tamaño máximo permitido de 700 KB.'
+    );
+  }
+  return {
+    base64: compacto,
+    nombre: String(body?.comprobanteNombre || 'comprobante')
+      .trim()
+      .slice(0, 200),
+    mimeType: String(body?.comprobanteMime || 'application/octet-stream')
+      .trim()
+      .slice(0, 120),
+    tamano,
+  };
+}
+
 /** Último día hábil (lunes a viernes) del mes de la fecha indicada. */
 function esUltimoDiaHabilDelMes(fecha: Date) {
   const anio = fecha.getUTCFullYear();
@@ -229,6 +280,15 @@ function calcularEstado(
 
 /* --------------------------- Acceso a datos ------------------------------ */
 
+function normalizarEstadoPago(
+  data: any
+): 'pendiente' | 'aprobado' | 'rechazado' {
+  const estado = String(data?.estado || '').toLowerCase();
+  return PAYMENT_STATES.includes(estado)
+    ? (estado as 'pendiente' | 'aprobado' | 'rechazado')
+    : 'aprobado';
+}
+
 function serializarPago(item: { id: string; data: any }): PagoItem {
   const data = item.data || {};
   return {
@@ -239,6 +299,12 @@ function serializarPago(item: { id: string; data: any }): PagoItem {
     medioPago: data.medioPago || '',
     observacion: data.observacion || '',
     registradoPor: data.registradoPor || null,
+    estado: normalizarEstadoPago(data),
+    comprobanteDisponible: Boolean(data.comprobanteDisponible),
+    comprobanteNombre: data.comprobanteNombre || '',
+    motivoRechazo: data.motivoRechazo || '',
+    revisadoPor: data.revisadoPor || null,
+    revisadoAt: fechaISO(data.revisadoAt),
   };
 }
 
@@ -251,8 +317,17 @@ function construirCuota(
   const anio = Number(data.anio) || 0;
   const mes = Number(data.mes) || 0;
   const importe = Number(data.importe) || 0;
+  const aprobados = pagos.filter(
+    (pago) => normalizarEstadoPago(pago.data) === 'aprobado'
+  );
+  const pendientes = pagos.filter(
+    (pago) => normalizarEstadoPago(pago.data) === 'pendiente'
+  );
   const pagado = round2(
-    pagos.reduce((acc, pago) => acc + (Number(pago.data?.importe) || 0), 0)
+    aprobados.reduce((acc, pago) => acc + (Number(pago.data?.importe) || 0), 0)
+  );
+  const pendienteRevision = round2(
+    pendientes.reduce((acc, pago) => acc + (Number(pago.data?.importe) || 0), 0)
   );
   const saldo = Math.max(0, round2(importe - pagado));
   const vencimientoISO = data.vencimientoISO || vencimientoDe(anio, mes);
@@ -273,6 +348,8 @@ function construirCuota(
     nivel: data.nivel || alumno?.nivel || '',
     importe,
     pagado,
+    pendienteRevision,
+    pagosPendientes: pendientes.length,
     saldo,
     estado: calcularEstado(importe, pagado, vencimientoISO),
     vencimientoISO,
@@ -838,6 +915,9 @@ export const cf_registrarPago = onRequest(
         medioPago: medio,
         observacion: String(observacion || '').trim(),
         registradoPor: claims.uid,
+        estado: 'aprobado',
+        revisadoPor: claims.uid,
+        revisadoAt: FieldValue.serverTimestamp(),
         createdAt: FieldValue.serverTimestamp(),
       });
 
@@ -846,10 +926,9 @@ export const cf_registrarPago = onRequest(
         .where('cuotaId', '==', cuotaId)
         .get();
       const pagado = round2(
-        pagosSnap.docs.reduce(
-          (acc, doc) => acc + (Number(doc.data().importe) || 0),
-          0
-        )
+        pagosSnap.docs
+          .filter((doc) => normalizarEstadoPago(doc.data()) === 'aprobado')
+          .reduce((acc, doc) => acc + (Number(doc.data().importe) || 0), 0)
       );
       const importeCuota = Number(cuotaData.importe) || 0;
       const vencimientoISO =
@@ -1481,6 +1560,322 @@ export const cf_enviarRecordatorioDeuda = onRequest(
       res.status(200).send(resultado);
     } catch (error: any) {
       console.error('Error en cf_enviarRecordatorioDeuda:', error);
+      sendFunctionError(res, error);
+    }
+  }
+);
+
+/* ------------------- Web: comprobantes y revisión de pagos --------------- */
+
+/**
+ * 35. cf_submitPayment
+ * El tutor sube un comprobante sobre una cuota. El pago queda pendiente
+ * de aprobación por parte de un administrador.
+ */
+export const cf_submitPayment = onRequest(
+  { cors: true, invoker: 'public' },
+  async (req, res) => {
+    try {
+      const claims = await verifyAuth(req);
+      if (claims.role !== 'Padre') {
+        throw new HttpError(403, 'Permisos insuficientes: Requiere rol Padre.');
+      }
+
+      const { cuotaId, importe, medioPago, fechaPago, observacion } =
+        req.body || {};
+      if (!cuotaId || typeof cuotaId !== 'string') {
+        throw new HttpError(400, 'Falta el ID de la cuota (cuotaId).');
+      }
+      const importeNum = Number(importe);
+      if (!Number.isFinite(importeNum) || importeNum <= 0) {
+        throw new HttpError(
+          400,
+          'El importe del pago debe ser un número mayor a cero.'
+        );
+      }
+      const medio = String(medioPago || '')
+        .trim()
+        .toLowerCase();
+      if (!MEDIOS_PAGO.includes(medio)) {
+        throw new HttpError(
+          400,
+          `Medio de pago inválido. Debe ser uno de: ${MEDIOS_PAGO.join(', ')}.`
+        );
+      }
+      const fechaISOValue = parseFechaISO(fechaPago) || hoyISO();
+      const comprobante = parseComprobante(req.body);
+
+      const cuotaDoc = await db.collection('cuotas').doc(cuotaId).get();
+      if (!cuotaDoc.exists) {
+        throw new HttpError(404, 'La cuota no existe.');
+      }
+      const cuotaData = cuotaDoc.data() || {};
+
+      let autorizado = cuotaData.parentUid === claims.uid;
+      if (!autorizado && cuotaData.studentId) {
+        const studentDoc = await db
+          .collection('students')
+          .doc(cuotaData.studentId)
+          .get();
+        autorizado = studentDoc.data()?.parentId === claims.uid;
+      }
+      if (!autorizado) {
+        throw new HttpError(403, 'No tenés permiso sobre esta cuota.');
+      }
+
+      const pendientesSnap = await db
+        .collection('pagos')
+        .where('cuotaId', '==', cuotaId)
+        .get();
+      const yaPendiente = pendientesSnap.docs.some(
+        (doc) =>
+          normalizarEstadoPago(doc.data()) === 'pendiente' &&
+          doc.data()?.parentUid === claims.uid
+      );
+      if (yaPendiente) {
+        throw new HttpError(
+          409,
+          'Ya existe un comprobante pendiente de revisión para esta cuota.'
+        );
+      }
+
+      const pagoRef = db.collection('pagos').doc();
+      await db.collection('pagosComprobantes').doc(pagoRef.id).set({
+        pagoId: pagoRef.id,
+        cuotaId,
+        data: comprobante.base64,
+        nombre: comprobante.nombre,
+        mimeType: comprobante.mimeType,
+        tamano: comprobante.tamano,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+
+      await pagoRef.set({
+        cuotaId,
+        studentId: cuotaData.studentId || '',
+        parentUid: claims.uid,
+        anio: Number(cuotaData.anio) || 0,
+        mes: Number(cuotaData.mes) || 0,
+        concepto: cuotaData.concepto || 'mensual',
+        descripcion: cuotaData.descripcion || '',
+        importe: round2(importeNum),
+        fechaPagoISO: fechaISOValue,
+        fechaPago: Timestamp.fromDate(
+          new Date(`${fechaISOValue}T12:00:00.000Z`)
+        ),
+        medioPago: medio,
+        observacion: String(observacion || '').trim(),
+        registradoPor: claims.uid,
+        estado: 'pendiente',
+        comprobanteDisponible: true,
+        comprobanteNombre: comprobante.nombre,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+
+      res.status(201).send({
+        id: pagoRef.id,
+        estado: 'pendiente',
+        message: 'Comprobante enviado. El pago queda pendiente de aprobación.',
+      });
+    } catch (error: any) {
+      console.error('Error en cf_submitPayment:', error);
+      sendFunctionError(res, error);
+    }
+  }
+);
+
+/**
+ * 36. cf_getPagosPendientes
+ * Lista los pagos con comprobante pendientes de revisión (solo admin).
+ */
+export const cf_getPagosPendientes = onRequest(
+  { cors: true, invoker: 'public' },
+  async (req, res) => {
+    try {
+      const claims = await verifyAuth(req);
+      if (claims.role !== 'user_admin') {
+        throw new HttpError(
+          403,
+          'Permisos insuficientes: Requiere rol user_admin.'
+        );
+      }
+
+      const snapshot = await db
+        .collection('pagos')
+        .where('estado', '==', 'pendiente')
+        .get();
+
+      const cuotaIds = [
+        ...new Set(snapshot.docs.map((doc) => doc.data().cuotaId)),
+      ];
+      const cuotasMap = new Map<string, any>();
+      const alumnosMap = await cargarAlumnos(
+        snapshot.docs.map((doc) => doc.data().studentId)
+      );
+      await Promise.all(
+        cuotaIds.filter(Boolean).map(async (cuotaId) => {
+          const doc = await db.collection('cuotas').doc(cuotaId).get();
+          if (doc.exists) cuotasMap.set(doc.id, doc.data() || {});
+        })
+      );
+
+      const pagos = snapshot.docs
+        .map((doc) => {
+          const data = doc.data() || {};
+          const cuota = cuotasMap.get(data.cuotaId) || {};
+          return {
+            id: doc.id,
+            cuotaId: data.cuotaId || '',
+            studentId: data.studentId || '',
+            alumno:
+              alumnosMap.get(data.studentId)?.nombre ||
+              cuota.alumnoNombre ||
+              '',
+            periodo: periodoLabel(
+              Number(cuota.anio) || Number(data.anio) || 0,
+              Number(cuota.mes) || Number(data.mes) || 0
+            ),
+            concepto: cuota.descripcion || data.descripcion || '',
+            importe: Number(data.importe) || 0,
+            fechaPagoISO: data.fechaPagoISO || '',
+            medioPago: data.medioPago || '',
+            observacion: data.observacion || '',
+            comprobanteDisponible: Boolean(data.comprobanteDisponible),
+            comprobanteNombre: data.comprobanteNombre || '',
+            createdAt: fechaISO(data.createdAt),
+            _orden: data.createdAt?.toMillis?.() || 0,
+          };
+        })
+        .sort((a, b) => b._orden - a._orden)
+        .map(({ _orden, ...item }) => item);
+
+      res.status(200).send({
+        pagos,
+        total: round2(pagos.reduce((acc, pago) => acc + pago.importe, 0)),
+      });
+    } catch (error: any) {
+      console.error('Error en cf_getPagosPendientes:', error);
+      sendFunctionError(res, error);
+    }
+  }
+);
+
+/**
+ * 37. cf_reviewPayment
+ * Aprueba o rechaza un pago pendiente (solo admin).
+ */
+export const cf_reviewPayment = onRequest(
+  { cors: true, invoker: 'public' },
+  async (req, res) => {
+    try {
+      const claims = await verifyAuth(req);
+      if (claims.role !== 'user_admin') {
+        throw new HttpError(
+          403,
+          'Permisos insuficientes: Requiere rol user_admin.'
+        );
+      }
+
+      const pagoId = String(req.body?.pagoId || '');
+      const action = String(req.body?.action || '').toLowerCase();
+      const motivo = String(req.body?.motivo || '')
+        .trim()
+        .slice(0, 500);
+      if (!pagoId || !['aprobar', 'rechazar'].includes(action)) {
+        throw new HttpError(400, 'Faltan parámetros válidos (pagoId, action).');
+      }
+
+      const ref = db.collection('pagos').doc(pagoId);
+      const doc = await ref.get();
+      if (!doc.exists) {
+        throw new HttpError(404, 'El pago no existe.');
+      }
+      if (normalizarEstadoPago(doc.data()) !== 'pendiente') {
+        throw new HttpError(409, 'El pago ya fue revisado anteriormente.');
+      }
+
+      const estado = action === 'aprobar' ? 'aprobado' : 'rechazado';
+      await ref.update({
+        estado,
+        motivoRechazo: estado === 'rechazado' ? motivo : '',
+        revisadoPor: claims.uid,
+        revisadoAt: FieldValue.serverTimestamp(),
+      });
+
+      const cuotaId = String(doc.data()?.cuotaId || '');
+      const pagoData = doc.data() || {};
+      let cuotaActualizada = null;
+      if (cuotaId) {
+        const cuotaDoc = await db.collection('cuotas').doc(cuotaId).get();
+        if (cuotaDoc.exists) {
+          const alumnoDoc = pagoData.studentId
+            ? await db.collection('students').doc(pagoData.studentId).get()
+            : null;
+          const pagos = await cargarPagosPorCuota([cuotaId]);
+          cuotaActualizada = construirCuota(
+            cuotaDoc.id,
+            cuotaDoc.data() || {},
+            pagos.get(cuotaId) || [],
+            alumnoDoc?.exists ? (alumnoDoc.data() as any) : undefined
+          );
+        }
+      }
+
+      res.status(200).send({
+        id: pagoId,
+        estado,
+        message:
+          estado === 'aprobado'
+            ? 'Pago aprobado correctamente.'
+            : 'Pago rechazado.',
+        cuota: cuotaActualizada,
+      });
+    } catch (error: any) {
+      console.error('Error en cf_reviewPayment:', error);
+      sendFunctionError(res, error);
+    }
+  }
+);
+
+/**
+ * 38. cf_getPagoComprobante
+ * Devuelve el comprobante base64 de un pago (solo admin).
+ */
+export const cf_getPagoComprobante = onRequest(
+  { cors: true, invoker: 'public' },
+  async (req, res) => {
+    try {
+      const claims = await verifyAuth(req);
+      if (claims.role !== 'user_admin') {
+        throw new HttpError(
+          403,
+          'Permisos insuficientes: Requiere rol user_admin.'
+        );
+      }
+
+      const pagoId = String(req.query.pagoId || req.body?.pagoId || '');
+      if (!pagoId) {
+        throw new HttpError(400, 'Falta el ID del pago.');
+      }
+
+      const fileDoc = await db
+        .collection('pagosComprobantes')
+        .doc(pagoId)
+        .get();
+      if (!fileDoc.exists) {
+        throw new HttpError(404, 'El pago no tiene comprobante adjunto.');
+      }
+      const file = fileDoc.data() || {};
+
+      res.status(200).send({
+        pagoId,
+        nombre: file.nombre || 'comprobante',
+        mimeType: file.mimeType || 'application/octet-stream',
+        tamano: Number(file.tamano) || 0,
+        base64: file.data || '',
+      });
+    } catch (error: any) {
+      console.error('Error en cf_getPagoComprobante:', error);
       sendFunctionError(res, error);
     }
   }

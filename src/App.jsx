@@ -15,6 +15,8 @@ import Registration from './pages/Registration';
 import ReportesPagos from './pages/ReportesPagos';
 import ResetPassword from './pages/ResetPassword';
 import Wellness from './pages/Wellness';
+import PagosPendientes from './pages/PagosPendientes';
+import SolicitudesInscripcion from './pages/SolicitudesInscripcion';
 
 import ParentPanel from './pages/ParentPanel';
 import Privacy from './pages/Privacy';
@@ -40,6 +42,11 @@ function App() {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/admin" element={<AdminPanel />} />
         <Route path="/reportes-pagos" element={<ReportesPagos />} />
+        <Route
+          path="/solicitudes-inscripcion"
+          element={<SolicitudesInscripcion />}
+        />
+        <Route path="/pagos-pendientes" element={<PagosPendientes />} />
         <Route path="/panel-alumno" element={<StudentPanel />} />
         <Route path="/panel-docente" element={<TeacherPanel />} />
         <Route path="/panel-tutor" element={<ParentPanel />} />

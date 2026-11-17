@@ -54,7 +54,7 @@ async function sendEmail({ to, subject, html, attachments, }) {
             host,
             port,
             secure: port === 465,
-            auth: { user, pass }
+            auth: { user, pass },
         });
     }
     else {
@@ -68,8 +68,8 @@ async function sendEmail({ to, subject, html, attachments, }) {
                 secure: false,
                 auth: {
                     user: testAccount.user,
-                    pass: testAccount.pass
-                }
+                    pass: testAccount.pass,
+                },
             });
         }
         catch (err) {
