@@ -25,14 +25,17 @@ const MEDIO_ETIQUETA = {
   mercadopago: 'Mercado Pago',
 };
 
-const descargarBase64 = ({ base64, nombre, mimeType }) => {
-  const binario = atob(base64);
+const base64ABlob = ({ base64, mimeType }) => {
+  const binario = atob(String(base64 || ''));
   const bytes = new Uint8Array(binario.length);
   for (let i = 0; i < binario.length; i += 1) bytes[i] = binario.charCodeAt(i);
-  const blob = new Blob([bytes], {
+  return new Blob([bytes], {
     type: mimeType || 'application/octet-stream',
   });
-  const url = URL.createObjectURL(blob);
+};
+
+const descargarBase64 = ({ base64, nombre, mimeType }) => {
+  const url = URL.createObjectURL(base64ABlob({ base64, mimeType }));
   const link = document.createElement('a');
   link.href = url;
   link.download = nombre || 'comprobante';
@@ -51,6 +54,7 @@ const PagosPendientes = () => {
   const [aviso, setAviso] = useState('');
   const [procesando, setProcesando] = useState('');
   const [descargando, setDescargando] = useState('');
+  const [preview, setPreview] = useState(null);
   const [rechazoId, setRechazoId] = useState('');
   const [motivoRechazo, setMotivoRechazo] = useState('');
 
@@ -103,6 +107,12 @@ const PagosPendientes = () => {
     cargarPagos();
   }, [cargarPagos]);
 
+  useEffect(() => {
+    return () => {
+      if (preview?.url) URL.revokeObjectURL(preview.url);
+    };
+  }, [preview]);
+
   const verComprobante = async (pago) => {
     setDescargando(pago.id);
     setError('');
@@ -115,12 +125,22 @@ const PagosPendientes = () => {
       );
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data.error || 'No se pudo descargar el comprobante.');
+        throw new Error(data.error || 'No se pudo abrir el comprobante.');
       }
-      descargarBase64(data);
+      if (!data.base64) {
+        throw new Error('El comprobante está vacío.');
+      }
+      const mimeType = data.mimeType || 'application/octet-stream';
+      setPreview({
+        ...data,
+        mimeType,
+        url: URL.createObjectURL(
+          base64ABlob({ base64: data.base64, mimeType })
+        ),
+      });
     } catch (err) {
       console.error(err);
-      setError(err.message || 'No se pudo descargar el comprobante.');
+      setError(err.message || 'No se pudo abrir el comprobante.');
     } finally {
       setDescargando('');
     }
@@ -355,6 +375,59 @@ const PagosPendientes = () => {
           </div>
         )}
       </main>
+
+      {preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
+              <div className="min-w-0">
+                <h2 className="font-headline text-lg font-bold text-slate-800 truncate">
+                  {preview.nombre || 'Comprobante'}
+                </h2>
+                <p className="text-xs text-slate-500">
+                  {preview.mimeType}
+                  {preview.tamano
+                    ? ` · ${Math.round(preview.tamano / 1024)} KB`
+                    : ''}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => descargarBase64(preview)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-sky-100 hover:bg-sky-200 text-sky-700 font-bold text-sm border-none cursor-pointer"
+                >
+                  <Icon name="download" className="text-base" />
+                  Descargar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreview(null)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm border-none cursor-pointer"
+                >
+                  <Icon name="close" className="text-base" />
+                  Cerrar
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto bg-slate-100 p-4 flex items-start justify-center">
+              {preview.mimeType.startsWith('image/') ? (
+                <img
+                  src={preview.url}
+                  alt={`Comprobante de ${preview.nombre || 'pago'}`}
+                  className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-sm"
+                />
+              ) : (
+                <iframe
+                  src={preview.url}
+                  title={`Comprobante de ${preview.nombre || 'pago'}`}
+                  className="w-full h-[75vh] rounded-lg bg-white shadow-sm border-0"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
